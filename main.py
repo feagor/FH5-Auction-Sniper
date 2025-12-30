@@ -45,6 +45,7 @@ EXCEL_SHEET_NAME = get_config_value('GENERAL', 'EXCEL_SHEET_NAME', 'all_cars_inf
 LOCAL_MAKE_COL = get_config_value('GENERAL', 'LOCAL_MAKE_COL', 'MAKE LOC (ENG)')
 DEBUG_MODE = get_config_value('GENERAL', 'DEBUG_MODE', False, bool)
 GAME_TITLE = get_config_value('GENERAL', 'GAME_TITLE', 'Forza Horizon 5')
+INPUT_DELAY_SCALE = get_config_value('GENERAL', 'INPUT_DELAY_SCALE', 1.0, float)
 
 # Constants (colorama codes kept for terminal coloring)
 RED_CODE = '\033[1;31;40m'
@@ -53,6 +54,48 @@ YELLOW_CODE = '\033[1;33;40m'
 BLUE_CODE = '\033[1;34;40m'
 CYAN_CODE = '\033[1;36;40m'
 COLOR_END_CODE = '\033[0m'
+
+class InputDriver:
+    """Wraps keyboard/mouse automation with configurable timing."""
+
+    def __init__(self, keyboard, pointer, delay_scale: float = 1.0):
+        self.keyboard = keyboard
+        self.pointer = pointer
+        self.delay_scale = max(delay_scale, 0.0)
+
+    def wait(self, seconds: float) -> None:
+        time.sleep(max(0.0, seconds) * (self.delay_scale or 1.0))
+
+    def tap(self, key: str, count: int = 1, interval: float = 0.1) -> None:
+        for _ in range(max(0, int(count))):
+            self.keyboard.press(key)
+            if interval:
+                self.wait(interval)
+
+    def step(self, inc_key: str, dec_key: str, delta: int, interval: float = 0.1) -> None:
+        if delta > 0:
+            self.tap(inc_key, delta, interval)
+        elif delta < 0:
+            self.tap(dec_key, abs(delta), interval)
+
+    def hold(self, key: str, duration: float = 5) -> None:
+        self.pointer.keyDown(key)
+        self.wait(duration)
+        self.pointer.keyUp(key)
+
+    def move(self, x: int, y: int, duration: float = 0.01) -> None:
+        self.pointer.moveTo(x, y, duration=duration)
+
+    def click(self) -> None:
+        self.keyboard.mouseDown()
+        self.wait(0.05)
+        self.keyboard.mouseUp()
+
+    def burst(self, count: int, gap: float = 0.01) -> None:
+        for _ in range(max(0, int(count))):
+            self.click()
+            if gap:
+                self.wait(gap)
 
 WIN_SZ = {'left': 0, 'top': 0, 'width': 0, 'height': 0}
 
@@ -79,7 +122,6 @@ IMAGE_PATH_HMMF = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMMF.png')
 
 class ColorFormatter(logging.Formatter):
     """Inject ANSI colors for console handler only."""
-
     def format(self, record):
         message = super().format(record)
         color = getattr(record, 'color', None)
@@ -142,7 +184,7 @@ def log_and_print(level: str, message: str, color: str = None):
 def wait_if_paused(poll_interval: float = 0.1):
     """Block the automation loop while the pause overlay button is active."""
     while PAUSE_EVENT.is_set() and not STOP_EVENT.is_set():
-        time.sleep(poll_interval)
+        in_dr.wait(poll_interval)
 
 
 def debug_screenshot(prefix_name, screenshot_cv):
@@ -213,63 +255,19 @@ def press_image(image_path, search_region, width_ratio, height_ratio, threshold)
     best_loc = get_best_match_img_array(image_path, search_region, width_ratio, height_ratio, threshold)
     left, top, width, height = search_region
     if best_loc:
-        pydi.press('enter')
+        in_dr.tap('enter')
         return True
     return False
 
-
-def multi_press(button, times: int, interval: float = 0.1) -> int:
-    """Press `button` `times` times with `interval` seconds between presses."""
-    if times <= 0:
-        return 0
-    successful = 0
-    for _ in range(int(times)):
-        result = pydi.press(button)
-        if result:
-            successful += 1
-        if interval > 0:
-            time.sleep(interval)
-    return successful
-
-
-def multi_press_cond(button1, button2, times: int, interval: float = 0.1):
-    if times > 0:
-        multi_press(button1, times, interval)
-    else:
-        multi_press(button2, abs(times), interval)
-
-
-def hold_key(button, secs=5):
-    pyau.keyDown(button)
-    time.sleep(secs)
-    pyau.keyUp(button)
-
-
-def move_mouse(x, y):
-    pyau.moveTo(x, y, duration=0.01)
-
-
-def click_left():
-    pydi.mouseDown()
-    time.sleep(0.05)
-    pydi.mouseUp()
-
-
-def multi_click_left(n):
-    for _ in range(n):
-        click_left()
-        time.sleep(0.01)
-
-
 def reset_car_make():
     active_game_window(GAME_TITLE)
-    pydi.press('enter')
-    time.sleep(0.5)
-    hold_key('w', 4.5)
-    hold_key('a', 2)
-    time.sleep(0.5)
-    pydi.press('enter')
-    time.sleep(0.5)
+    in_dr.tap('enter')
+    in_dr.wait(0.5)
+    in_dr.hold('w', 4.5)
+    in_dr.hold('a', 2)
+    in_dr.wait(0.5)
+    in_dr.tap('enter')
+    in_dr.wait(0.5)
     log_and_print('info', 'Car make reset to ANY', GREEN_CODE)
 
 
@@ -287,26 +285,26 @@ def set_auc_search_cond(
 
     # set make
     if Make_X_Delta != 0 or Make_Y_Delta != 0:
-        pydi.press('enter')
-        time.sleep(0.5)    
+        in_dr.tap('enter')
+        in_dr.wait(0.5)
         #select vertical
-        multi_press_cond('w', 's', Make_Y_Delta)
-        time.sleep(0.5)
+        in_dr.step('w', 's', Make_Y_Delta)
+        in_dr.wait(0.5)
         #select horizontal
-        multi_press_cond('a', 'd', Make_X_Delta)        
-        time.sleep(1)
-        pydi.press('enter')
-        time.sleep(0.5)
+        in_dr.step('a', 'd', Make_X_Delta)        
+        in_dr.wait(1)
+        in_dr.tap('enter', 1, 0)
+        in_dr.wait(0.5)
         
     # GOTO model and set it
-    pydi.press('s')    
-    time.sleep(1.5)
+    in_dr.tap('s')    
+    in_dr.wait(1.5)
     if Make_X_Delta == 0 and Make_Y_Delta == 0:  # same make
         model_move_delta = New_Model_Pos - Old_Model_Pos
     else:
         model_move_delta = New_Model_Pos
-    multi_press_cond('d', 'a', model_move_delta, 0.3)
-    multi_press('s', 5, 0.3)
+    in_dr.step('d', 'a', model_move_delta, 0.3)
+    in_dr.tap('s', 5, 0.3)
 
 
 def active_game_window(title=GAME_TITLE):
@@ -371,7 +369,7 @@ def write_excel(data, output_path, sheet_name):
 
 def exit_script():
     log_and_print('error', 'Script exits in 2 seconds!', RED_CODE)
-    time.sleep(2)
+    in_dr.wait(2)
     log_and_print('error', 'Script stops!', RED_CODE)
     STOP_EVENT.set()
     sys.exit(0)
@@ -387,8 +385,8 @@ def something_wrong():
     global MISSED_MATCH_TIMES
     log_and_print('warning', f'Fail to match anything. {MISSED_MATCH_TIMES}-th try to press ESC to see whether it works!', RED_CODE)
     active_game_window()
-    pydi.press('esc')
-    time.sleep(2)
+    in_dr.tap('esc')
+    in_dr.wait(2)
     if MISSED_MATCH_TIMES >= 10:
         log_and_print('error', 'Fail to detect anything, try to restart the script or game!', RED_CODE)
         exit_script()
@@ -427,7 +425,7 @@ def main():
     REGION_AUCTION_RESULT = (60 + WIN_SZ['left'], 150 + WIN_SZ['top'], 180, 40)
     
     log_and_print('info', 'The script will start in 5 seconds', YELLOW_CODE)
-    time.sleep(5)
+    in_dr.wait(5)
     log_and_print('info', 'Script started', YELLOW_CODE)
 
     car_needs_swap_fl = True
@@ -442,22 +440,22 @@ def main():
             car_needs_swap_fl = True
             failed_snipe = True
 
-        time.sleep(0.35)
+        in_dr.wait(0.35)
         wait_if_paused()
         if STOP_EVENT.is_set():
             break
         is_search_auc_pressed = press_image(IMAGE_PATH_SA, REGION_AUCTION_MAIN, width_ratio, height_ratio, threshold)
-        time.sleep(0.5)
+        in_dr.wait(0.5)
         wait_if_paused()
         if STOP_EVENT.is_set():
             break
         if not is_search_auc_pressed:
             Home_Page_found = get_best_match_img_array([IMAGE_PATH_HMG, IMAGE_PATH_HMBS, IMAGE_PATH_HMMF], REGION_HOME_TABS, width_ratio, height_ratio, threshold)
             if Home_Page_found:
-                hold_key('a', 5)
-                pydi.press('w')
-                pydi.press('enter')
-                time.sleep(1)
+                in_dr.hold('a', 5)
+                in_dr.tap('w')
+                in_dr.tap('enter')
+                in_dr.wait(1)
             else:
                 something_wrong()
             continue
@@ -493,9 +491,9 @@ def main():
                 New_Make_Loc, New_Model_Loc = eval(Make_Loc), Model_Loc
                 # reset cursor
                 active_game_window()
-                move_mouse(WIN_SZ['left'] + 10, WIN_SZ['top'] + 40)
-                multi_click_left(3)
-                hold_key('w', 1.5)
+                in_dr.move(WIN_SZ['left'] + 10, WIN_SZ['top'] + 40)
+                in_dr.burst(3)
+                in_dr.hold('w', 1.5)
                 log_and_print('info', f'Setting search to: {Make_Name}, {Model_FName}', GREEN_CODE)
                 set_auc_search_cond(Old_Make_Loc, Old_Model_Loc, New_Make_Loc, New_Model_Loc)
                 log_and_print('info', f'Start sniping {Model_FName}', GREEN_CODE)
@@ -506,7 +504,7 @@ def main():
                 continue
 
         is_confirm_button_pressed = press_image(IMAGE_PATH_CF, REGION_AUCTION_MAIN, width_ratio, height_ratio, threshold)
-        time.sleep(1)
+        in_dr.wait(1)
         wait_if_paused()
         if STOP_EVENT.is_set():
             break
@@ -523,21 +521,21 @@ def main():
                         stop = True
                         break
                     wait_if_paused()
-                    time.sleep(0.1)
-                    pydi.press('y')
+                    in_dr.wait(0.1)
+                    in_dr.tap('y')
                     found_PB = get_best_match_img_array(IMAGE_PATH_PB, REGION_AUCTION_ACTION_MENU, width_ratio, height_ratio, threshold)
                     found_VS = get_best_match_img_array(IMAGE_PATH_VS, REGION_AUCTION_ACTION_MENU, width_ratio, height_ratio, threshold)
                     found_AO = get_best_match_img_array(IMAGE_PATH_AO, REGION_AUCTION_ACTION_MENU, width_ratio, height_ratio, threshold)
                     if found_PB or found_VS or found_AO:
                         stop = True
-                    time.sleep(0.3)
+                    in_dr.wait(0.3)
 
                 if found_PB:
-                    pydi.press('s')
-                    pydi.press('enter')
-                    time.sleep(2)
-                    pydi.press('enter')
-                    time.sleep(5)
+                    in_dr.tap('s')
+                    in_dr.tap('enter')
+                    in_dr.wait(2)
+                    in_dr.tap('enter')
+                    in_dr.wait(5)
                     stop = False
 
                     while not stop:
@@ -551,8 +549,8 @@ def main():
                             end_time = time.time()
                             minutes, remaining_seconds = convert_seconds(end_time - start_time)
                             log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Failed!', RED_CODE)
-                            pydi.press('enter')
-                            pydi.press('esc')
+                            in_dr.tap('enter')
+                            in_dr.tap('esc')
                             stop = True
                         if found_buyoutsuccess:
                             end_time = time.time()
@@ -563,23 +561,23 @@ def main():
                             if df.loc[index, 'BUYOUT NUM'] == 0:
                                 car_needs_swap_fl = True
                                 Old_Make_Loc, Old_Model_Loc = New_Make_Loc, New_Model_Loc
-                            pydi.press('enter')
-                            pydi.press('esc')
+                            in_dr.tap('enter')
+                            in_dr.tap('esc')
                             stop = True
-                        time.sleep(3)
+                        in_dr.wait(3)
                 else:
                     end_time = time.time()
                     minutes, remaining_seconds = convert_seconds(end_time - start_time)
                     log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Missed!', YELLOW_CODE)
-                    pydi.press('esc')
-                    time.sleep(0.1)
+                    in_dr.tap('esc')
+                    in_dr.wait(0.1)
                     if STOP_EVENT.is_set():
                         break
             elif is_car_found is None and is_auc_res_found and is_confirm_button_pressed:
                 log_and_print('debug', 'Car not found in stock')
                 MISSED_MATCH_TIMES = 1
-                pydi.press('esc')
-                time.sleep(0.5)
+                in_dr.tap('esc')
+                in_dr.wait(0.5)
                 continue
         else:
             log_and_print('debug', 'Auction results not found :(')
@@ -600,9 +598,10 @@ overlay_controller = OverlayController(
     log_callback=log_and_print,
     color_map={'resume': GREEN_CODE, 'pause': YELLOW_CODE, 'stop': RED_CODE},
 )
-# Set internal pause in pyautogui / pydirectinput
-pyau.PAUSE = 0
-pydi.PAUSE = 0
+in_dr = InputDriver(pydi, pyau, INPUT_DELAY_SCALE)
+# # Set internal pause in pyautogui / pydirectinput
+# pyau.PAUSE = 0
+# pydi.PAUSE = 0
 
 colorama.init(wrap=True)
 ##END INIT BLOCK##
