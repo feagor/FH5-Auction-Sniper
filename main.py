@@ -54,7 +54,7 @@ BLUE_CODE = '\033[1;34;40m'
 CYAN_CODE = '\033[1;36;40m'
 COLOR_END_CODE = '\033[0m'
 
-WINDOWS_SIZE = {'left': 0, 'top': 0, 'width': 0, 'height': 0}
+WIN_SZ = {'left': 0, 'top': 0, 'width': 0, 'height': 0}
 
 FIRST_RUN = True
 MISSED_MATCH_TIMES = 1
@@ -313,7 +313,8 @@ def active_game_window(title=GAME_TITLE):
     try:
         windows = gw.getWindowsWithTitle(title)
         if not windows:
-            return None
+            logger.exception(f"Window {GAME_TITLE} not found")
+            exit_script()
         game_window = windows[0]
         try:
             game_window.activate()
@@ -323,20 +324,10 @@ def active_game_window(title=GAME_TITLE):
                 game_window.restore()
             except Exception:
                 logger.exception("Failed to activate/restore window")
-        return game_window
+                exit_script()
     except Exception:
         logger.exception("Error getting game window")
-        return None
-
-
-def get_window_bounds(window):
-    """Return window bounds as (left, top, width, height)."""
-    return window.left, window.top, window.width, window.height
-
-
-def update_game_bounds(left, top, width, height):
-    """Update the global game bounds dictionary."""
-    WINDOWS_SIZE.update({'left': left, 'top': top, 'width': width, 'height': height})
+        exit_script()
 
 
 def measure_game_window():
@@ -344,16 +335,19 @@ def measure_game_window():
     try:
         game_window = active_game_window()
         if game_window:
-            try:
-                game_window.resizeTo(1616, 939)
-            except Exception:
-                logger.debug("Could not resize game window, continuing with current size")
-            return get_window_bounds(game_window)
+            game_window.resizeTo(1616, 939)
+            WIN_SZ.update(
+                {'left': game_window.left, 
+                'top': game_window.top, 
+                'width': game_window.width, 
+                'height': game_window.height}
+            )
         else:
             log_and_print('error', "Game window not found. Check the title.", RED_CODE)
+            exit_script()
     except Exception:
         logger.exception("An error occurred while measuring the game window")
-    return None, None, None, None
+        exit_script()
 
 
 def write_excel(data, output_path, sheet_name):
@@ -400,53 +394,38 @@ def something_wrong():
         exit_script()
     MISSED_MATCH_TIMES += 1
 
+
 def main():
     log_and_print('info', 'Welcome to the Forza 5 CAR BUYOUT Sniper', YELLOW_CODE)
     log_and_print('info', 'Running pre-check: monitor and game resolution', BLUE_CODE)
-
     monitors = gm.get_monitors()
     log_and_print('debug', f"Monitors data: {monitors}", CYAN_CODE)
-
-    game_window = active_game_window()
-    if not game_window:
-        log_and_print('error', 'Game window not found.', RED_CODE)
-        exit_script()
-
-    update_game_bounds(*get_window_bounds(game_window))
-    bounds = WINDOWS_SIZE
-    log_and_print('info', f"Game window {GAME_TITLE} found at ({bounds['left']},{bounds['top']}) with resolution {bounds['width']}x{bounds['height']}", CYAN_CODE)
-
-    cx = bounds['left'] + bounds['width'] / 2
-    cy = bounds['top'] + bounds['height'] / 2
+    active_game_window()
+    log_and_print('info', f"Game window {GAME_TITLE} found at ({WIN_SZ['left']},{WIN_SZ['top']}) with resolution {WIN_SZ['width']}x{WIN_SZ['height']}", CYAN_CODE)
+    cx = WIN_SZ['left'] + WIN_SZ['width'] / 2
+    cy = WIN_SZ['top'] + WIN_SZ['height'] / 2
     mon = gm.find_monitor_for_point(cx, cy, monitors)
     if mon:
         log_and_print('info', f"Center of the game window is at ({cx:.0f}, {cy:.0f}) on monitor: {mon.get('name')} {mon.get('resolution')}", CYAN_CODE)
     else:
         log_and_print('error', f"Center of the game window is at ({cx:.0f}, {cy:.0f}) not found on any monitor", RED_CODE)
         exit_script()
+    log_and_print('info', f"Resize {GAME_TITLE} resolution to {WIN_SZ['width']}x{WIN_SZ['height']} pixels!", CYAN_CODE)
 
-    measured_bounds = measure_game_window()
-    if None in measured_bounds:
-        exit_script()
-    update_game_bounds(*measured_bounds)
-    bounds = WINDOWS_SIZE
-    log_and_print('info', f"Resize {GAME_TITLE} resolution to {bounds['width']}x{bounds['height']} pixels!", CYAN_CODE)
-
-    game_bounds = (bounds['left'], bounds['top'], bounds['width'], bounds['height'])
     if overlay_controller.available:
-        overlay_controller.launch(game_bounds)
+        overlay_controller.launch((WIN_SZ['left'], WIN_SZ['top'], WIN_SZ['width'], WIN_SZ['height']))
     else:
         logger.debug('Overlay disabled: tkinter module not available')
 
     # screenshot params and regions
     threshold = 0.8
     width_ratio, height_ratio = 1, 1
-    REGION_HOME_TABS = (520 + bounds['left'], 164 + bounds['top'], 570, 40)
-    REGION_AUCTION_MAIN = (230 + bounds['left'], 590 + bounds['top'], 910, 310)
-    REGION_AUCTION_CAR_DESCR = (790 + bounds['left'], 190 + bounds['top'], 810, 90)
-    REGION_AUCTION_ACTION_MENU = (525 + bounds['left'], 330 + bounds['top'], 530, 190)
-    REGION_AUCTION_RESULT = (60 + bounds['left'], 150 + bounds['top'], 180, 40)
-
+    REGION_HOME_TABS = (520 + WIN_SZ['left'], 164 + WIN_SZ['top'], 570, 40)
+    REGION_AUCTION_MAIN = (230 + WIN_SZ['left'], 590 + WIN_SZ['top'], 910, 310)
+    REGION_AUCTION_CAR_DESCR = (790 + WIN_SZ['left'], 190 + WIN_SZ['top'], 810, 90)
+    REGION_AUCTION_ACTION_MENU = (525 + WIN_SZ['left'], 330 + WIN_SZ['top'], 530, 190)
+    REGION_AUCTION_RESULT = (60 + WIN_SZ['left'], 150 + WIN_SZ['top'], 180, 40)
+    
     log_and_print('info', 'The script will start in 5 seconds', YELLOW_CODE)
     time.sleep(5)
     log_and_print('info', 'Script started', YELLOW_CODE)
@@ -514,7 +493,7 @@ def main():
                 New_Make_Loc, New_Model_Loc = eval(Make_Loc), Model_Loc
                 # reset cursor
                 active_game_window()
-                move_mouse(bounds['left'] + 10, bounds['top'] + 40)
+                move_mouse(WIN_SZ['left'] + 10, WIN_SZ['top'] + 40)
                 multi_click_left(3)
                 hold_key('w', 1.5)
                 log_and_print('info', f'Setting search to: {Make_Name}, {Model_FName}', GREEN_CODE)
