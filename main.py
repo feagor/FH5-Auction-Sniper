@@ -19,42 +19,6 @@ import colorama
 
 from overlay import OverlayController
 
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-
-# Read configuration from settings.ini
-config = configparser.ConfigParser()
-config.read(os.path.join(CURRENT_DIR, 'settings.ini'))
-
-def get_config_value(section, key, default=None, value_type=str):
-    """
-    Safely read value from config. Returns default on any error.
-    value_type can be bool, int, float or callable for conversion.
-    """
-    try:
-        value = config.get(section, key)
-        if value_type == bool:
-            return value.lower() in ['true', '1', 'yes']
-        return value_type(value)
-    except Exception:
-        return default
-
-# Get config data with defaults
-LOCAL = get_config_value('GENERAL', 'LOCAL', 'ENG')
-EXCEL_FILENAME = get_config_value('GENERAL', 'EXCEL_FILENAME', 'FH5_all_cars_info_v3.xlsx')
-EXCEL_SHEET_NAME = get_config_value('GENERAL', 'EXCEL_SHEET_NAME', 'all_cars_info')
-LOCAL_MAKE_COL = get_config_value('GENERAL', 'LOCAL_MAKE_COL', 'MAKE LOC (ENG)')
-DEBUG_MODE = get_config_value('GENERAL', 'DEBUG_MODE', False, bool)
-GAME_TITLE = get_config_value('GENERAL', 'GAME_TITLE', 'Forza Horizon 5')
-INPUT_DELAY_SCALE = get_config_value('GENERAL', 'INPUT_DELAY_SCALE', 1.0, float)
-
-# Constants (colorama codes kept for terminal coloring)
-RED_CODE = '\033[1;31;40m'
-GREEN_CODE = '\033[1;32;40m'
-YELLOW_CODE = '\033[1;33;40m'
-BLUE_CODE = '\033[1;34;40m'
-CYAN_CODE = '\033[1;36;40m'
-COLOR_END_CODE = '\033[0m'
-
 class InputDriver:
     """Wraps keyboard/mouse automation with configurable timing."""
 
@@ -97,8 +61,54 @@ class InputDriver:
             if gap:
                 self.wait(gap)
 
-WIN_SZ = {'left': 0, 'top': 0, 'width': 0, 'height': 0}
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# Read configuration from settings.ini
+config = configparser.ConfigParser()
+config.read(os.path.join(CURRENT_DIR, 'settings.ini'))
+
+def get_config_value(section, key, default=None, value_type=str):
+    """
+    Safely read value from config. Returns default on any error.
+    value_type can be bool, int, float or callable for conversion.
+    """
+    try:
+        value = config.get(section, key)
+        if value_type == bool:
+            return value.lower() in ['true', '1', 'yes']
+        return value_type(value)
+    except Exception:
+        return default
+
+# Get config data with defaults
+LOCAL               = get_config_value('GENERAL', 'LOCAL', 'ENG')
+EXCEL_FILENAME      = get_config_value('GENERAL', 'EXCEL_FILENAME', 'FH5_all_cars_info_v3.xlsx')
+EXCEL_SHEET_NAME    = get_config_value('GENERAL', 'EXCEL_SHEET_NAME', 'all_cars_info')
+LOCAL_MAKE_COL      = get_config_value('GENERAL', 'LOCAL_MAKE_COL', 'MAKE LOC (ENG)')
+DEBUG_MODE          = get_config_value('GENERAL', 'DEBUG_MODE', False, bool)
+GAME_TITLE          = get_config_value('GENERAL', 'GAME_TITLE', 'Forza Horizon 5')
+INPUT_DELAY_SCALE   = get_config_value('GENERAL', 'INPUT_DELAY_SCALE', 1.0, float)
+WAIT_RESULT_TIME    = get_config_value('GENERAL', 'WAIT_RESULT_TIME', 1.0, float)
+
+# Constants (colorama codes kept for terminal coloring)
+RED_CODE = '\033[1;31;40m'
+GREEN_CODE = '\033[1;32;40m'
+YELLOW_CODE = '\033[1;33;40m'
+BLUE_CODE = '\033[1;34;40m'
+CYAN_CODE = '\033[1;36;40m'
+COLOR_END_CODE = '\033[0m'
+
+class ColorFormatter(logging.Formatter):
+    """Inject ANSI colors for console handler only."""
+    def format(self, record):
+        message = super().format(record)
+        color = getattr(record, 'color', None)
+        if color:
+            return f"{color}{message}{COLOR_END_CODE}"
+        else:
+            return message
+
+WIN_SZ = {'left': 0, 'top': 0, 'width': 0, 'height': 0}
 FIRST_RUN = True
 MISSED_MATCH_TIMES = 1
 PAUSE_EVENT = threading.Event()
@@ -118,18 +128,6 @@ IMAGE_PATH_AO = os.path.join(CURRENT_DIR, 'images', LOCAL, 'AO.png')
 IMAGE_PATH_HMG = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMG.png')
 IMAGE_PATH_HMBS = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMBS.png')
 IMAGE_PATH_HMMF = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMMF.png')
-
-
-class ColorFormatter(logging.Formatter):
-    """Inject ANSI colors for console handler only."""
-    def format(self, record):
-        message = super().format(record)
-        color = getattr(record, 'color', None)
-        if color:
-            return f"{color}{message}{COLOR_END_CODE}"
-        else:
-            return message
-
 
 def setup_logging(debug_mode: bool):
     """
@@ -259,6 +257,7 @@ def press_image(image_path, search_region, width_ratio, height_ratio, threshold)
         return True
     return False
 
+
 def reset_car_make():
     active_game_window(GAME_TITLE)
     in_dr.tap('enter')
@@ -319,10 +318,16 @@ def active_game_window(title=GAME_TITLE):
         except Exception:
             try:
                 game_window.minimize()
-                game_window.restore()
+                game_window.restore()                
             except Exception:
                 logger.exception("Failed to activate/restore window")
                 exit_script()
+        WIN_SZ.update(
+            {'left': game_window.left, 
+            'top': game_window.top, 
+            'width': game_window.width, 
+            'height': game_window.height}
+        )
     except Exception:
         logger.exception("Error getting game window")
         exit_script()
@@ -444,6 +449,7 @@ def main():
         wait_if_paused()
         if STOP_EVENT.is_set():
             break
+
         is_search_auc_pressed = press_image(IMAGE_PATH_SA, REGION_AUCTION_MAIN, width_ratio, height_ratio, threshold)
         in_dr.wait(0.5)
         wait_if_paused()
@@ -504,7 +510,7 @@ def main():
                 continue
 
         is_confirm_button_pressed = press_image(IMAGE_PATH_CF, REGION_AUCTION_MAIN, width_ratio, height_ratio, threshold)
-        in_dr.wait(1)
+        in_dr.wait(WAIT_RESULT_TIME)
         wait_if_paused()
         if STOP_EVENT.is_set():
             break
@@ -599,11 +605,9 @@ overlay_controller = OverlayController(
     color_map={'resume': GREEN_CODE, 'pause': YELLOW_CODE, 'stop': RED_CODE},
 )
 in_dr = InputDriver(pydi, pyau, INPUT_DELAY_SCALE)
-# # Set internal pause in pyautogui / pydirectinput
-# pyau.PAUSE = 0
-# pydi.PAUSE = 0
-
 colorama.init(wrap=True)
+pyau.PAUSE = 0
+pydi.PAUSE = 0
 ##END INIT BLOCK##
 
 if __name__ == "__main__":
