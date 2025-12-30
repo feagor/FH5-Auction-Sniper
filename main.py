@@ -17,6 +17,8 @@ import pydirectinput as pydi
 import get_monitors as gm
 import colorama
 
+from overlay import OverlayController
+
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Read configuration from settings.ini
@@ -46,8 +48,9 @@ GAME_TITLE = get_config_value('GENERAL', 'GAME_TITLE', 'Forza Horizon 5')
 # Set internal pause in pyautogui / pydirectinput
 pyau.PAUSE = 0
 pydi.PAUSE = 0
-# Ensure colorama initialized for terminal coloring
+
 colorama.init(wrap=True)
+
 # Constants (colorama codes kept for terminal coloring)
 RED_CODE = '\033[1;31;40m'
 GREEN_CODE = '\033[1;32;40m'
@@ -56,17 +59,15 @@ BLUE_CODE = '\033[1;34;40m'
 CYAN_CODE = '\033[1;36;40m'
 COLOR_END_CODE = '\033[0m'
 
-try:
-    import tkinter as tk
-except Exception:
-    tk = None
-
 FIRST_RUN = True
 MISSED_MATCH_TIMES = 1
 PAUSE_EVENT = threading.Event()
 STOP_EVENT = threading.Event()
 # Paths
 EXCEL_PATH = os.path.join(CURRENT_DIR, EXCEL_FILENAME)
+
+WINDOWS_SIZE = {'left': 0, 'top': 0, 'width': 0, 'height': 0}
+
 # Templates paths
 IMAGE_PATH_SA = os.path.join(CURRENT_DIR, 'images', LOCAL, 'SA.png')
 IMAGE_PATH_CF = os.path.join(CURRENT_DIR, 'images', LOCAL, 'CF.png')
@@ -81,7 +82,7 @@ IMAGE_PATH_HMG = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMG.png')
 IMAGE_PATH_HMBS = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMBS.png')
 IMAGE_PATH_HMMF = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMMF.png')
 
-# --- logging setup ---------------------------------------------------------
+
 class ColorFormatter(logging.Formatter):
     """Inject ANSI colors for console handler only."""
 
@@ -122,7 +123,6 @@ def setup_logging(debug_mode: bool):
 
     return logger
 
-logger = setup_logging(DEBUG_MODE)
 
 def log_and_print(level: str, message: str, color: str = None):
     """
@@ -143,121 +143,20 @@ def log_and_print(level: str, message: str, color: str = None):
     else:
         log_fn(message)
 
+logger = setup_logging(DEBUG_MODE)
+
+overlay_controller = OverlayController(
+    PAUSE_EVENT,
+    STOP_EVENT,
+    logger,
+    log_callback=log_and_print,
+    color_map={'resume': GREEN_CODE, 'pause': YELLOW_CODE, 'stop': RED_CODE},
+)
 
 def wait_if_paused(poll_interval: float = 0.1):
     """Block the automation loop while the pause overlay button is active."""
     while PAUSE_EVENT.is_set() and not STOP_EVENT.is_set():
         time.sleep(poll_interval)
-
-
-def start_overlay(window_bounds=None):
-    """Render a minimal always-on-top overlay with pause/stop controls."""
-    if tk is None:
-        logger.warning('tkinter is not available. Overlay controls disabled.')
-        return
-
-    try:
-        root = tk.Tk()
-    except Exception:
-        logger.exception('Failed to initialize overlay window')
-        return
-
-    root.title('FH5 Sniper Control')
-    root.configure(bg='#111111')
-    root.attributes('-topmost', True)
-    root.attributes('-alpha', 0.9)
-    root.overrideredirect(True)
-
-    status_var = tk.StringVar(value='Running')
-
-    def place_overlay(bounds):
-        if not bounds:
-            root.geometry('+80+80')
-            return
-        left, top, width, height = bounds
-        margin = 16
-        root.update_idletasks()
-        ow = root.winfo_width() or 180
-        oh = root.winfo_height() or 120
-        x = int(left + width - ow - margin)
-        y = int(top + height - oh - margin)
-        min_x = int(left + margin)
-        min_y = int(top + margin)
-        root.geometry(f'+{max(x, min_x)}+{max(y, min_y)}')
-
-    place_overlay(window_bounds)
-
-    def toggle_pause():
-        if PAUSE_EVENT.is_set():
-            PAUSE_EVENT.clear()
-            status_var.set('Running')
-            pause_btn.configure(text='Pause')
-            log_and_print('info', 'Automation resumed from overlay', GREEN_CODE)
-        else:
-            PAUSE_EVENT.set()
-            status_var.set('Paused')
-            pause_btn.configure(text='Resume')
-            log_and_print('warning', 'Automation paused from overlay', YELLOW_CODE)
-
-    def request_stop():
-        if not STOP_EVENT.is_set():
-            STOP_EVENT.set()
-            status_var.set('Stopping...')
-            log_and_print('warning', 'Stop requested from overlay', RED_CODE)
-        try:
-            root.destroy()
-        except tk.TclError:
-            pass
-
-    def start_move(event):
-        root._drag_start_x = event.x
-        root._drag_start_y = event.y
-
-    def do_move(event):
-        x = root.winfo_pointerx() - getattr(root, '_drag_start_x', 0)
-        y = root.winfo_pointery() - getattr(root, '_drag_start_y', 0)
-        root.geometry(f'+{x}+{y}')
-
-    frame = tk.Frame(root, bg='#111111', padx=12, pady=10)
-    frame.pack()
-
-    title_lbl = tk.Label(frame, text='Sniper Overlay', fg='white', bg='#111111', font=('Segoe UI', 10, 'bold'))
-    title_lbl.pack(anchor='w')
-    status_lbl = tk.Label(frame, textvariable=status_var, fg='#66ff99', bg='#111111', font=('Consolas', 10))
-    status_lbl.pack(anchor='w', pady=(2, 8))
-
-    btn_style = {
-        'bg': '#1e1e1e',
-        'fg': 'white',
-        'activebackground': '#4b4b4b',
-        'activeforeground': 'white',
-        'bd': 0,
-        'font': ('Segoe UI', 10, 'bold'),
-        'width': 12,
-        'pady': 4,
-    }
-
-    pause_btn = tk.Button(frame, text='Pause', command=toggle_pause, **btn_style)
-    pause_btn.pack(pady=(0, 6))
-    stop_btn = tk.Button(frame, text='Stop', command=request_stop, bg='#8b0000', activebackground='#a40000', fg='white', width=12, pady=4, bd=0, font=('Segoe UI', 10, 'bold'))
-    stop_btn.pack()
-
-    for widget in (frame, title_lbl, status_lbl):
-        widget.bind('<Button-1>', start_move)
-        widget.bind('<B1-Motion>', do_move)
-
-    def monitor_stop_flag():
-        if STOP_EVENT.is_set():
-            try:
-                root.destroy()
-            except tk.TclError:
-                pass
-        else:
-            root.after(200, monitor_stop_flag)
-
-    root.bind('<Escape>', lambda _event: request_stop())
-    root.after(200, monitor_stop_flag)
-    root.mainloop()
 
 
 def debug_screenshot(prefix_name, screenshot_cv):
@@ -444,6 +343,16 @@ def active_game_window(title=GAME_TITLE):
         return None
 
 
+def get_window_bounds(window):
+    """Return window bounds as (left, top, width, height)."""
+    return window.left, window.top, window.width, window.height
+
+
+def update_game_bounds(left, top, width, height):
+    """Update the global game bounds dictionary."""
+    WINDOWS_SIZE.update({'left': left, 'top': top, 'width': width, 'height': height})
+
+
 def measure_game_window():
     """Measure the game window size and try to resize it to a fixed resolution for matching."""
     try:
@@ -453,8 +362,7 @@ def measure_game_window():
                 game_window.resizeTo(1616, 939)
             except Exception:
                 logger.debug("Could not resize game window, continuing with current size")
-            left, top, width, height = game_window.left, game_window.top, game_window.width, game_window.height
-            return left, top, width, height
+            return get_window_bounds(game_window)
         else:
             log_and_print('error', "Game window not found. Check the title.", RED_CODE)
     except Exception:
@@ -463,6 +371,8 @@ def measure_game_window():
 
 
 def write_excel(data, output_path, sheet_name):
+    """Persist the DataFrame to Excel, re-open it for formatting, 
+    enable autofilter, and auto-size each column before saving."""
     data.to_excel(output_path, index=False, sheet_name=sheet_name)
     workbook = load_workbook(output_path)
     sheet = workbook.active
@@ -510,43 +420,47 @@ def main():
     log_and_print('info', 'Running pre-check: monitor and game resolution', BLUE_CODE)
 
     monitors = gm.get_monitors()
-    logger.debug("Monitors data: %s", monitors)
+    log_and_print('debug', f"Monitors data: {monitors}", CYAN_CODE)
 
-    forzaWinInfo = gw.getWindowsWithTitle(GAME_TITLE)
-    if not forzaWinInfo:
+    game_window = active_game_window()
+    if not game_window:
         log_and_print('error', 'Game window not found.', RED_CODE)
         exit_script()
+
+    update_game_bounds(*get_window_bounds(game_window))
+    bounds = WINDOWS_SIZE
+    log_and_print('info', f"Game window {GAME_TITLE} found at ({bounds['left']},{bounds['top']}) with resolution {bounds['width']}x{bounds['height']}", CYAN_CODE)
+
+    cx = bounds['left'] + bounds['width'] / 2
+    cy = bounds['top'] + bounds['height'] / 2
+    mon = gm.find_monitor_for_point(cx, cy, monitors)
+    if mon:
+        log_and_print('info', f"Center of the game window is at ({cx:.0f}, {cy:.0f}) on monitor: {mon.get('name')} {mon.get('resolution')}", CYAN_CODE)
     else:
-        w = forzaWinInfo[0]
-        left, top, width, height = w.left, w.top, w.width, w.height
-        log_and_print('info', f"Game window {GAME_TITLE} found at ({left},{top}) with resolution {width}x{height}", CYAN_CODE)
-        cx, cy = left + width / 2, top + height / 2
-        mon = gm.find_monitor_for_point(cx, cy, monitors)
-        if mon:
-            log_and_print('info', f"Center of the game window is at ({cx:.0f}, {cy:.0f}) on monitor: {mon.get('name')} {mon.get('resolution')}", CYAN_CODE)
-        else:
-            log_and_print('error', f"Center of the game window is at ({cx:.0f}, {cy:.0f}) not found on any monitor", RED_CODE)
-            exit_script()
-
-    left, top, width, height = measure_game_window()
-    if None in (left, top, width, height):
+        log_and_print('error', f"Center of the game window is at ({cx:.0f}, {cy:.0f}) not found on any monitor", RED_CODE)
         exit_script()
-    log_and_print('info', f"Resize {GAME_TITLE} resolution to {width}x{height} pixels!", CYAN_CODE)
 
-    game_bounds = (left, top, width, height)
-    if tk:
-        threading.Thread(target=start_overlay, args=(game_bounds,), name='OverlayUI', daemon=True).start()
+    measured_bounds = measure_game_window()
+    if None in measured_bounds:
+        exit_script()
+    update_game_bounds(*measured_bounds)
+    bounds = WINDOWS_SIZE
+    log_and_print('info', f"Resize {GAME_TITLE} resolution to {bounds['width']}x{bounds['height']} pixels!", CYAN_CODE)
+
+    game_bounds = (bounds['left'], bounds['top'], bounds['width'], bounds['height'])
+    if overlay_controller.available:
+        overlay_controller.launch(game_bounds)
     else:
         logger.debug('Overlay disabled: tkinter module not available')
 
     # screenshot params and regions
     threshold = 0.8
     width_ratio, height_ratio = 1, 1
-    REGION_HOME_TABS = (520 + left, 164 + top, 570, 40)
-    REGION_AUCTION_MAIN = (230 + left, 590 + top, 910, 310)
-    REGION_AUCTION_CAR_DESCR = (790 + left, 190 + top, 810, 90)
-    REGION_AUCTION_ACTION_MENU = (525 + left, 330 + top, 530, 190)
-    REGION_AUCTION_RESULT = (60 + left, 150 + top, 180, 40)
+    REGION_HOME_TABS = (520 + bounds['left'], 164 + bounds['top'], 570, 40)
+    REGION_AUCTION_MAIN = (230 + bounds['left'], 590 + bounds['top'], 910, 310)
+    REGION_AUCTION_CAR_DESCR = (790 + bounds['left'], 190 + bounds['top'], 810, 90)
+    REGION_AUCTION_ACTION_MENU = (525 + bounds['left'], 330 + bounds['top'], 530, 190)
+    REGION_AUCTION_RESULT = (60 + bounds['left'], 150 + bounds['top'], 180, 40)
 
     log_and_print('info', 'The script will start in 5 seconds', YELLOW_CODE)
     time.sleep(5)
@@ -615,7 +529,7 @@ def main():
                 New_Make_Loc, New_Model_Loc = eval(Make_Loc), Model_Loc
                 # reset cursor
                 active_game_window()
-                move_mouse(left + 10, top + 40)
+                move_mouse(bounds['left'] + 10, bounds['top'] + 40)
                 multi_click_left(3)
                 hold_key('w', 1.5)
                 log_and_print('info', f'Setting search to: {Make_Name}, {Model_FName}', GREEN_CODE)
