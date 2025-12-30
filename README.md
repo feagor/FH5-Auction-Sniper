@@ -32,11 +32,7 @@ In this demo, we let the script snipe these four cars `AUDI RS`, `AUDI R1`, `MEG
 |         |            |
 
 ## Limits:
-1. [FH5_all_cars_info_v3.xlsx](https://github.com/YiwenLu-yiwen/Forza-Horizon-5-Auction-Buyout-Sniper/blob/main/FH5_all_cars_info_v3.xlsx) must be up to date. Otherwise, it may buy different cars. (PS: Update at 03/02/25)
-
-## Future Work
-- [ ] Apply a better interface rather than console.
-- [ ] Fit any resolution.
+1. [FH5_all_cars_info_v4.xlsx](https://github.com/YiwenLu-yiwen/Forza-Horizon-5-Auction-Buyout-Sniper/blob/main/FH5_all_cars_info_v3.xlsx) must be up to date. Otherwise, it may buy different cars. (PS: Update at 01.01.2026)
 
 ## Pre-Requirements
 1. System Requirements:
@@ -57,7 +53,7 @@ In this demo, we let the script snipe these four cars `AUDI RS`, `AUDI R1`, `MEG
 
 3. Default language is English, any other language should replace all screenshots (See images folder, DON'T CHANGE FILE NAME)
 
-4. Modify the [CARS.csv](https://github.com/YiwenLu-yiwen/Forza-Horizon-5-Auction-Buyout-Sniper/blob/main/FH5_all_cars_info_v3.csv)
+4. Modify the [CARS.csv](https://github.com/feagor/FH5-Auction-Sniper/blob/main/FH5_all_cars_info_v4.xlsx)
 
     For introduction of `CAR MAKE LOCATION` and `CAR MODEL LOCATION`, please see previous tags.
     
@@ -79,7 +75,7 @@ python main.py
     Steps: 
     1. Download zip file on [release page](https://github.com/YiwenLu-yiwen/Forza-Horizon-5-Auction-Buyout-Sniper/releases).
     2. Modify the images folder.(No need if you are satisfied pre-requirements)
-    3. Modify the `FH5_all_cars_info_v3.csv`.
+    3. Modify the `FH5_all_cars_info_v4.csv`.
     4. Run the exe.
 
 ## Start and Enjoy
