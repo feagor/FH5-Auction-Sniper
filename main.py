@@ -45,11 +45,6 @@ EXCEL_SHEET_NAME = get_config_value('GENERAL', 'EXCEL_SHEET_NAME', 'all_cars_inf
 LOCAL_MAKE_COL = get_config_value('GENERAL', 'LOCAL_MAKE_COL', 'MAKE LOC (ENG)')
 DEBUG_MODE = get_config_value('GENERAL', 'DEBUG_MODE', False, bool)
 GAME_TITLE = get_config_value('GENERAL', 'GAME_TITLE', 'Forza Horizon 5')
-# Set internal pause in pyautogui / pydirectinput
-pyau.PAUSE = 0
-pydi.PAUSE = 0
-
-colorama.init(wrap=True)
 
 # Constants (colorama codes kept for terminal coloring)
 RED_CODE = '\033[1;31;40m'
@@ -59,15 +54,14 @@ BLUE_CODE = '\033[1;34;40m'
 CYAN_CODE = '\033[1;36;40m'
 COLOR_END_CODE = '\033[0m'
 
+WINDOWS_SIZE = {'left': 0, 'top': 0, 'width': 0, 'height': 0}
+
 FIRST_RUN = True
 MISSED_MATCH_TIMES = 1
 PAUSE_EVENT = threading.Event()
 STOP_EVENT = threading.Event()
 # Paths
 EXCEL_PATH = os.path.join(CURRENT_DIR, EXCEL_FILENAME)
-
-WINDOWS_SIZE = {'left': 0, 'top': 0, 'width': 0, 'height': 0}
-
 # Templates paths
 IMAGE_PATH_SA = os.path.join(CURRENT_DIR, 'images', LOCAL, 'SA.png')
 IMAGE_PATH_CF = os.path.join(CURRENT_DIR, 'images', LOCAL, 'CF.png')
@@ -91,7 +85,8 @@ class ColorFormatter(logging.Formatter):
         color = getattr(record, 'color', None)
         if color:
             return f"{color}{message}{COLOR_END_CODE}"
-        return message
+        else:
+            return message
 
 
 def setup_logging(debug_mode: bool):
@@ -143,15 +138,6 @@ def log_and_print(level: str, message: str, color: str = None):
     else:
         log_fn(message)
 
-logger = setup_logging(DEBUG_MODE)
-
-overlay_controller = OverlayController(
-    PAUSE_EVENT,
-    STOP_EVENT,
-    logger,
-    log_callback=log_and_print,
-    color_map={'resume': GREEN_CODE, 'pause': YELLOW_CODE, 'stop': RED_CODE},
-)
 
 def wait_if_paused(poll_interval: float = 0.1):
     """Block the automation loop while the pause overlay button is active."""
@@ -414,7 +400,6 @@ def something_wrong():
         exit_script()
     MISSED_MATCH_TIMES += 1
 
-
 def main():
     log_and_print('info', 'Welcome to the Forza 5 CAR BUYOUT Sniper', YELLOW_CODE)
     log_and_print('info', 'Running pre-check: monitor and game resolution', BLUE_CODE)
@@ -626,6 +611,22 @@ def main():
     STOP_EVENT.set()
     log_and_print('info', 'Automation stopped.', YELLOW_CODE)
 
+##INIT BLOCK##
+logger = setup_logging(DEBUG_MODE)
+
+overlay_controller = OverlayController(
+    PAUSE_EVENT,
+    STOP_EVENT,
+    logger,
+    log_callback=log_and_print,
+    color_map={'resume': GREEN_CODE, 'pause': YELLOW_CODE, 'stop': RED_CODE},
+)
+# Set internal pause in pyautogui / pydirectinput
+pyau.PAUSE = 0
+pydi.PAUSE = 0
+
+colorama.init(wrap=True)
+##END INIT BLOCK##
 
 if __name__ == "__main__":
     main()
