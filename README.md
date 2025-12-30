@@ -29,10 +29,25 @@ In this demo, we let the script snipe these four cars `AUDI RS`, `AUDI R1`, `MEG
 | ✅ Include all car info                     |  v4.0          | Include short_name, seasons, DLC, Autoshow,etc    |
 | ✅ Game pre-check                           |  v4.0          | Game and windows resolution pre-check |
 | ✅ Few auction house setting                |  v5.0          | Only needs to set Price|
-|         |            |
+| ✅ Added multilocales support                |  v6.0         | Added rus locale, support more screen resolution( tested on 2k,4k)
 
 ## Limits:
-1. [FH5_all_cars_info_v4.xlsx](https://github.com/YiwenLu-yiwen/Forza-Horizon-5-Auction-Buyout-Sniper/blob/main/FH5_all_cars_info_v3.xlsx) must be up to date. Otherwise, it may buy different cars. (PS: Update at 01.01.2026)
+1. [FH5_all_cars_info_v4.xlsx](https://github.com/feagor/FH5-Auction-Sniper/blob/main/FH5_all_cars_info_v4.xlsx) must be up to date. Otherwise, it may buy different cars. (PS: Update at 01.01.2026)
+
+## Current settings snapshot
+
+The default `settings.ini` bundled with this repo is tuned to the Russian locale profile:
+
+| Key | Value | Purpose |
+| --- | --- | --- |
+| `LOCAL` | `RUS` | Selects the localized screenshot set under `images/RUS`. Switch to `ENG` if you want to use the English assets. |
+| `LOCAL_MAKE_COL` | `MAKE LOC (RUS)` | Column in the workbook that stores make/model labels for the selected locale. Update when you change `LOCAL`. |
+| `EXCEL_FILENAME` | `FH5_all_cars_info_v4.xlsx` | Car catalog that also stores your `BUY NUM` values. |
+| `EXCEL_SHEET_NAME` | `all_cars_info` | Worksheet to read from within the Excel file. |
+| `DEBUG_MODE` | `false` | Set to `true` if you need verbose logging while troubleshooting runs. |
+| `GAME_TITLE` | `Forza Horizon 5` | Window caption used to make sure the game is focused before automation starts. |
+
+Adjust `settings.ini` if your environment differs (e.g., switch locale, rename the workbook, or run the game through a different launcher title).
 
 ## Pre-Requirements
 1. System Requirements:
@@ -51,9 +66,9 @@ In this demo, we let the script snipe these four cars `AUDI RS`, `AUDI R1`, `MEG
 
     ![Graphic setting](archive/graphics_setting.png)
 
-3. Default language is English, any other language should replace all screenshots (See images folder, DON'T CHANGE FILE NAME)
+3. The shipped locale is `RUS`, so the script expects the screenshots from `images/RUS`. If you prefer another language, change `LOCAL` in `settings.ini`, supply a matching screenshot set (keep the file names identical), and point `LOCAL_MAKE_COL` to the proper workbook columns.
 
-4. Modify the [CARS.csv](https://github.com/feagor/FH5-Auction-Sniper/blob/main/FH5_all_cars_info_v4.xlsx)
+4. Update the workbook defined by `EXCEL_FILENAME` (currently `FH5_all_cars_info_v4.xlsx`).
 
     For introduction of `CAR MAKE LOCATION` and `CAR MODEL LOCATION`, please see previous tags.
     
@@ -64,8 +79,8 @@ In this demo, we let the script snipe these four cars `AUDI RS`, `AUDI R1`, `MEG
     
     Python version must below 3.13
 ```
-Git Clone https://github.com/YiwenLu-yiwen/Forza-Horizon-5-Auction-Buyout-Sniper.git
-cd Forza-Horizon-5-Auction-Buyout-Sniper
+git clone https://github.com/feagor/FH5-Auction-Sniper.git
+cd FH5-Auction-Sniper
 pip install -r requirements.txt
 python main.py
 ```
@@ -81,9 +96,9 @@ python main.py
 ## Start and Enjoy
 1. Make sure you have checked all above info.
 
-2. Modify the `FH5_all_cars_info_v3.csv` for your own needs.
+2. Modify the `FH5_all_cars_info_v4.xlsx` file (or whichever workbook you set in `settings.ini`) for your own needs.
 
-3. Optional: Set auction price. 
+3. Optional: Set auction price and other toggles directly in `settings.ini`. 
 
 4. Stay with this screen (Search auctions must be active), then run the script or exe.
 
