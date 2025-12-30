@@ -490,7 +490,7 @@ def main():
                 Old_Make_Loc, Old_Model_Loc = New_Make_Loc, New_Model_Loc
 
                 row = df.iloc[index]
-                Make_Name = row.iloc[0]
+                Make_Name = row['CAR MAKE']
                 Make_Loc = row[LOCAL_MAKE_COL]
                 Model_FName = row['CAR MODEL(Full Name)']
                 Model_Loc = row['MODEL LOC']
@@ -581,6 +581,7 @@ def main():
                         break
             elif is_car_found is None and is_auc_res_found and is_confirm_button_pressed:
                 log_and_print('debug', 'Car not found in stock')
+                global MISSED_MATCH_TIMES
                 MISSED_MATCH_TIMES = 1
                 in_dr.tap('esc')
                 in_dr.wait(0.5)
