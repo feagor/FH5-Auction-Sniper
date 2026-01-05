@@ -279,7 +279,8 @@ def get_cars_from_excel():
         car_info = EMPTY_CAR_INFO.copy()
         car_info['Excel_index'] = int(idx)
         car_info['Make_Name'] = row['CAR MAKE']
-        car_info['Make_loc'] = row[LOCAL_MAKE_COL]
+        make_loc = [int(part) for part in row[LOCAL_MAKE_COL].strip('()').split(',')]
+        car_info['Make_Loc'] = make_loc
         car_info['Model_FName'] = row['CAR MODEL(Full Name)']
         car_info['Model_SName'] = row['CAR MODEL(Short Name)']
         car_info['Model_Loc'] = row['MODEL LOC']
@@ -376,7 +377,7 @@ def active_game_window(title=GAME_TITLE):
     try:
         windows = gw.getWindowsWithTitle(title)
         if not windows:
-            logger.exception(f"Window {GAME_TITLE} not found")
+            logger.exception(f"Window {title} not found")
             exit_script()
         game_window = windows[0]
         try:
@@ -530,8 +531,9 @@ def main():
     previous_car_info = EMPTY_CAR_INFO.copy()
     start_time, all_snipe_index = time.time(), []
     cars = get_cars_from_excel()
+    formatted_cars = '\n'.join(f'  {idx}. {car}' for idx, car in enumerate(cars, 1))
+    log_and_print('info', f'Today car list for sniping:\n{formatted_cars}')
     new_car_info = cars[0]
-    log_and_print('info', f'Today car list for sniping: {cars}')
 
     while not STOP_EVENT.is_set():
         wait_if_paused()
