@@ -5,6 +5,7 @@ import logging
 import threading
 from logging.handlers import RotatingFileHandler
 import configparser
+from bisect import bisect_right
 
 import cv2
 import numpy as np
@@ -89,6 +90,7 @@ DEBUG_MODE          = get_config_value('GENERAL', 'DEBUG_MODE', False, bool)
 GAME_TITLE          = get_config_value('GENERAL', 'GAME_TITLE', 'Forza Horizon 5')
 INPUT_DELAY_SCALE   = get_config_value('GENERAL', 'INPUT_DELAY_SCALE', 1.0, float)
 WAIT_RESULT_TIME    = get_config_value('GENERAL', 'WAIT_RESULT_TIME', 1.0, float)
+MAX_BUYOUT_PRICE    = get_config_value('GENERAL', 'MAX_BUYOUT_PRICE', 1000000, int)
 
 # Constants (colorama codes kept for terminal coloring)
 RED_CODE = '\033[1;31;40m'
@@ -113,6 +115,13 @@ FIRST_RUN = True
 MISSED_MATCH_TIMES = 1
 PAUSE_EVENT = threading.Event()
 STOP_EVENT = threading.Event()
+EMPTY_CAR_INFO = {
+    'Make_Name': '',
+    'Make_Loc': (0, 0),
+    'Model_FName': '',
+    'Model_SName': '',
+    'Model_Loc': 0,
+}
 # Paths
 EXCEL_PATH = os.path.join(CURRENT_DIR, EXCEL_FILENAME)
 # Templates paths
@@ -125,9 +134,10 @@ IMAGE_PATH_BS = os.path.join(CURRENT_DIR, 'images', LOCAL, 'BS.png')
 IMAGE_PATH_NB = os.path.join(CURRENT_DIR, 'images', LOCAL, 'NB.png')
 IMAGE_PATH_VS = os.path.join(CURRENT_DIR, 'images', LOCAL, 'VS.png')
 IMAGE_PATH_AO = os.path.join(CURRENT_DIR, 'images', LOCAL, 'AO.png')
+
 IMAGE_PATH_HMG = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMG.png')
-IMAGE_PATH_HMBS = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMBS.png')
 IMAGE_PATH_HMMF = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMMF.png')
+IMAGE_PATH_HMBS = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMBS.png')
 
 def setup_logging(debug_mode: bool):
     """
@@ -258,53 +268,59 @@ def press_image(image_path, search_region, width_ratio, height_ratio, threshold)
     return False
 
 
-def reset_car_make():
-    active_game_window(GAME_TITLE)
-    in_dr.tap('enter')
-    in_dr.wait(0.5)
-    in_dr.hold('w', 4.5)
-    in_dr.hold('a', 2)
-    in_dr.wait(0.5)
-    in_dr.tap('enter')
-    in_dr.wait(0.5)
-    log_and_print('info', 'Car make reset to ANY', GREEN_CODE)
-
-
-def set_auc_search_cond(
-    Old_Make_Pos,
-    Old_Model_Pos,
-    New_Make_Pos,
-    New_Model_Pos
-):
+def set_auc_search_cond(old_car, new_car):
     global FIRST_RUN
-    if FIRST_RUN:
-        reset_car_make()
-        FIRST_RUN = False
-    Make_X_Delta, Make_Y_Delta = np.array(Old_Make_Pos) - np.array(New_Make_Pos)
 
-    # set make
+    if FIRST_RUN:
+        log_and_print('info', 'Reseting search conditions', GREEN_CODE)
+        in_dr.tap('y', 1, 1)
+
+    def _get_point(loc):
+        try:
+            x, y = loc
+            return np.array((int(x), int(y)))
+        except Exception:
+            return np.array((0, 0))
+
+    make_delta = _get_point(old_car.get('Make_Loc', (0, 0))) - _get_point(new_car.get('Make_Loc', (0, 0)))
+    Make_X_Delta = int(make_delta[0])
+    Make_Y_Delta = int(make_delta[1])
+
+    old_model_loc = old_car['Model_Loc']
+    new_model_loc = new_car['Model_Loc']
+
     if Make_X_Delta != 0 or Make_Y_Delta != 0:
         in_dr.tap('enter')
         in_dr.wait(0.5)
-        #select vertical
         in_dr.step('w', 's', Make_Y_Delta)
         in_dr.wait(0.5)
-        #select horizontal
-        in_dr.step('a', 'd', Make_X_Delta)        
+        in_dr.step('a', 'd', Make_X_Delta)
         in_dr.wait(1)
         in_dr.tap('enter', 1, 0)
         in_dr.wait(0.5)
-        
-    # GOTO model and set it
-    in_dr.tap('s')    
-    in_dr.wait(1.5)
-    if Make_X_Delta == 0 and Make_Y_Delta == 0:  # same make
-        model_move_delta = New_Model_Pos - Old_Model_Pos
-    else:
-        model_move_delta = New_Model_Pos
-    in_dr.step('d', 'a', model_move_delta, 0.3)
-    in_dr.tap('s', 5, 0.3)
 
+    in_dr.tap('s')
+    in_dr.wait(1.5)
+    if Make_X_Delta == 0 and Make_Y_Delta == 0:
+        model_move_delta = new_model_loc - old_model_loc
+    else:
+        model_move_delta = new_model_loc
+    in_dr.step('d', 'a', model_move_delta, 0.3)
+
+    if FIRST_RUN:
+        in_dr.tap('s', 3, 0.3)
+        prices = [
+            1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000,
+            11000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000,
+            110000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000,
+            1100000, 2000000, 3000000, 4000000, 5000000, 6000000, 7000000, 8000000, 9000000, 10000000,
+            11000000, 20000000, 30000000
+        ]
+        price_index = bisect_right(prices, MAX_BUYOUT_PRICE) - 1
+        log_and_print('info', f'Setting buyout price to {prices[price_index]}', GREEN_CODE)
+        in_dr.tap('d', price_index, 0.2)
+        FIRST_RUN = False
+    in_dr.tap('s', 3, 0.3)
 
 def active_game_window(title=GAME_TITLE):
     try:
@@ -328,6 +344,8 @@ def active_game_window(title=GAME_TITLE):
             'width': game_window.width, 
             'height': game_window.height}
         )
+
+        return game_window
     except Exception:
         logger.exception("Error getting game window")
         exit_script()
@@ -386,6 +404,30 @@ def convert_seconds(seconds):
     return minutes, remaining_seconds
 
 
+def build_car_info(row):
+    make_loc_raw = row.get(LOCAL_MAKE_COL, '(0, 0)')
+    try:
+        make_loc = tuple(eval(make_loc_raw)) if isinstance(make_loc_raw, str) else tuple(make_loc_raw)
+    except Exception:
+        make_loc = (0, 0)
+
+    short_name = row.get('CAR MODEL(Short Name)', '')
+    if isinstance(short_name, str):
+        short_name = short_name.strip()
+    else:
+        short_name = ''
+    if not short_name:
+        short_name = row.get('CAR MODEL(Full Name)', '')
+
+    return {
+        'Make_Name': row.get('CAR MAKE', ''),
+        'Make_Loc': make_loc,
+        'Model_FName': row.get('CAR MODEL(Full Name)', ''),
+        'Model_SName': short_name,
+        'Model_Loc': int(row.get('MODEL LOC', 0) or 0),
+    }
+
+
 def something_wrong():
     global MISSED_MATCH_TIMES
     log_and_print('warning', f'Fail to match anything. {MISSED_MATCH_TIMES}-th try to press ESC to see whether it works!', RED_CODE)
@@ -413,8 +455,9 @@ def main():
     else:
         log_and_print('error', f"Center of the game window is at ({cx:.0f}, {cy:.0f}) not found on any monitor", RED_CODE)
         exit_script()
+    measure_game_window()
     log_and_print('info', f"Resize {GAME_TITLE} resolution to {WIN_SZ['width']}x{WIN_SZ['height']} pixels!", CYAN_CODE)
-
+    
     if overlay_controller.available:
         overlay_controller.launch((WIN_SZ['left'], WIN_SZ['top'], WIN_SZ['width'], WIN_SZ['height']))
     else:
@@ -435,7 +478,7 @@ def main():
 
     car_needs_swap_fl = True
     failed_snipe = False
-    New_Make_Loc, New_Model_Loc = (0, 0), 0
+    previous_car_info = EMPTY_CAR_INFO.copy()
     start_time, all_snipe_index = time.time(), []
 
     while not STOP_EVENT.is_set():
@@ -487,22 +530,20 @@ def main():
                 # ignore car model location =-1
                 all_snipe_index = df[(df['BUYOUT NUM'] > 0) & (df['MODEL LOC']!=-1)].index.tolist() if all_snipe_index == [] else all_snipe_index
                 index = all_snipe_index.pop()
-                Old_Make_Loc, Old_Model_Loc = New_Make_Loc, New_Model_Loc
-
                 row = df.iloc[index]
                 Make_Name = row['CAR MAKE']
-                Make_Loc = row[LOCAL_MAKE_COL]
                 Model_FName = row['CAR MODEL(Full Name)']
-                Model_Loc = row['MODEL LOC']
-                New_Make_Loc, New_Model_Loc = eval(Make_Loc), Model_Loc
+                new_car_info = build_car_info(row)
                 # reset cursor
                 active_game_window()
                 in_dr.move(WIN_SZ['left'] + 10, WIN_SZ['top'] + 40)
                 in_dr.burst(3)
                 in_dr.hold('w', 1.5)
                 log_and_print('info', f'Setting search to: {Make_Name}, {Model_FName}', GREEN_CODE)
-                set_auc_search_cond(Old_Make_Loc, Old_Model_Loc, New_Make_Loc, New_Model_Loc)
-                log_and_print('info', f'Start sniping {Model_FName}', GREEN_CODE)
+                set_auc_search_cond(previous_car_info, new_car_info)
+                previous_car_info = new_car_info
+                target_name = new_car_info.get('Model_SName') or new_car_info.get('Model_FName')
+                log_and_print('info', f'Start sniping {target_name}', GREEN_CODE)
                 if STOP_EVENT.is_set():
                     break
             else:
@@ -566,7 +607,6 @@ def main():
                             write_excel(df, EXCEL_PATH, EXCEL_SHEET_NAME)
                             if df.loc[index, 'BUYOUT NUM'] == 0:
                                 car_needs_swap_fl = True
-                                Old_Make_Loc, Old_Model_Loc = New_Make_Loc, New_Model_Loc
                             in_dr.tap('enter')
                             in_dr.tap('esc')
                             stop = True
