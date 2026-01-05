@@ -116,11 +116,13 @@ MISSED_MATCH_TIMES = 1
 PAUSE_EVENT = threading.Event()
 STOP_EVENT = threading.Event()
 EMPTY_CAR_INFO = {
+    'Excel_index': -1,
     'Make_Name': '',
-    'Make_Loc': (0, 0),
+    'Make_Loc': [0,0],
     'Model_FName': '',
     'Model_SName': '',
     'Model_Loc': 0,
+    'Buyout_num': 0
 }
 # Paths
 EXCEL_PATH = os.path.join(CURRENT_DIR, EXCEL_FILENAME)
@@ -137,11 +139,9 @@ IMAGE_PATH_AO   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'AO.png')
 IMAGE_PATH_HMG  = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMG.png')
 IMAGE_PATH_HMMF = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMMF.png')
 IMAGE_PATH_HMBS = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMBS.png')
-
 # Screenshot matching parameters
 THRESHOLD = 0.8
 WIDTH_RATIO, HEIGHT_RATIO = 1, 1
-
 # Region globals
 REGION_HOME_TABS = (0,0,0,0)
 REGION_AUCTION_MAIN = (0,0,0,0)
@@ -157,18 +157,15 @@ def setup_logging(debug_mode: bool):
     log_path = os.path.join(CURRENT_DIR, 'fh5_sniper.log')
     logger = logging.getLogger('fh5_sniper')
     logger.setLevel(logging.DEBUG)  # capture all levels, handlers decide output
-
     # Remove existing handlers to avoid duplicate logs on re-import
     if logger.hasHandlers():
         logger.handlers.clear()
-
     # Rotating file handler: keep DEBUG-level history
     fh = RotatingFileHandler(log_path, maxBytes=5 * 1024 * 1024, backupCount=3, encoding='utf-8')
     fh.setLevel(logging.DEBUG)
     fh_formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s')
     fh.setFormatter(fh_formatter)
-    logger.addHandler(fh)
-
+    logger.addHandler(fh)    
     # Console handler: INFO by default, DEBUG if requested
     ch = logging.StreamHandler()
     ch.setLevel(logging.DEBUG if debug_mode else logging.INFO)
@@ -176,6 +173,7 @@ def setup_logging(debug_mode: bool):
     ch.setFormatter(ch_formatter)
     logger.addHandler(ch)
     return logger
+
 
 def log_and_print(level: str, message: str, color: str = None):
     """
@@ -188,8 +186,7 @@ def log_and_print(level: str, message: str, color: str = None):
         'info': logger.info,
         'warning': logger.warning,
         'error': logger.error,
-    }.get(level, logger.info)
-
+    }.get(level, logger.info)    
     extra = {'color': color} if color else None
     if extra:
         log_fn(message, extra=extra)
@@ -273,20 +270,24 @@ def press_image(image_path, search_region):
         return True
     return False
 
-def get_snipping_cars():
-    # read file and filter non-zero cars
+
+def get_cars_from_excel():
     df = pd.read_excel(EXCEL_PATH, EXCEL_SHEET_NAME)
-    # if len(df[df['BUYOUT NUM'] > 0]) == 0:
-    #     log_and_print('info', 'Finish Sniping!', GREEN_CODE)
-    #     STOP_EVENT.set()
-    #     break
-    # ignore car model location =-1
-    all_snipe_index = df[(df['BUYOUT NUM'] > 0) & (df['MODEL LOC']!=-1)].index.tolist() if all_snipe_index == [] else all_snipe_index
-    index = all_snipe_index.pop()
-    row = df.iloc[index]
-    Make_Name = row['CAR MAKE']
-    Model_FName = row['CAR MODEL(Full Name)']
-    new_car_info = build_car_info(row)
+    valid_rows = df[(df['BUYOUT NUM'] > 0) & (df['MODEL LOC'] != -1)]
+    cars = []
+    for idx, row in valid_rows.iterrows():        
+        car_info = EMPTY_CAR_INFO.copy()
+        car_info['Excel_index'] = int(idx)
+        car_info['Make_Name'] = row['CAR MAKE']
+        car_info['Make_loc'] = row[LOCAL_MAKE_COL]
+        car_info['Model_FName'] = row['CAR MODEL(Full Name)']
+        car_info['Model_SName'] = row['CAR MODEL(Short Name)']
+        car_info['Model_Loc'] = row['MODEL LOC']
+        car_info['Buyout_num'] = int(row['BUYOUT NUM'] or 0)
+        cars.append(car_info)
+    return cars
+
+
 def set_auc_search_cond(new_car, old_car):
     global FIRST_RUN
     log_and_print('info', 'Car need to be swapped', GREEN_CODE)
@@ -310,10 +311,9 @@ def set_auc_search_cond(new_car, old_car):
         target_name = new_car_info.get('Model_SName') or new_car_info.get('Model_FName')
         log_and_print('info', f'Start sniping {target_name}', GREEN_CODE)
         if STOP_EVENT.is_set():
-            break
+            return
     else:
-        something_wrong()
-        continue
+        something_wrong()        
     
     def _get_point(loc):
         try:
@@ -402,7 +402,7 @@ def active_game_window(title=GAME_TITLE):
 
 
 def measure_game_window():
-    """Measure the game window size and try to resize it to a fixed resolution for matching."""
+    global REGION_HOME_TABS, REGION_AUCTION_MAIN, REGION_AUCTION_CAR_DESCR, REGION_AUCTION_ACTION_MENU, REGION_AUCTION_RESULT
     try:
         game_window = active_game_window()
         if game_window:
@@ -414,11 +414,36 @@ def measure_game_window():
                 'height': game_window.height}
             )
             # Set regions based on measured window size    
-            REGION_HOME_TABS.update(520 + WIN_SZ['left'], 164 + WIN_SZ['top'], 570, 40)
-            REGION_AUCTION_MAIN.update(230 + WIN_SZ['left'], 590 + WIN_SZ['top'], 910, 310)
-            REGION_AUCTION_CAR_DESCR.update(790 + WIN_SZ['left'], 190 + WIN_SZ['top'], 810, 90)
-            REGION_AUCTION_ACTION_MENU.update(525 + WIN_SZ['left'], 330 + WIN_SZ['top'], 530, 190)
-            REGION_AUCTION_RESULT.update(60 + WIN_SZ['left'], 150 + WIN_SZ['top'], 180, 40)
+            REGION_HOME_TABS = (
+                520 + WIN_SZ['left'],
+                164 + WIN_SZ['top'],
+                570,
+                40,
+            )
+            REGION_AUCTION_MAIN = (
+                230 + WIN_SZ['left'],
+                590 + WIN_SZ['top'],
+                910,
+                310,
+            )
+            REGION_AUCTION_CAR_DESCR = (
+                790 + WIN_SZ['left'],
+                190 + WIN_SZ['top'],
+                810,
+                90,
+            )
+            REGION_AUCTION_ACTION_MENU = (
+                525 + WIN_SZ['left'],
+                330 + WIN_SZ['top'],
+                530,
+                190,
+            )
+            REGION_AUCTION_RESULT = (
+                60 + WIN_SZ['left'],
+                150 + WIN_SZ['top'],
+                180,
+                40,
+            )
             return game_window
         else:
             log_and_print('error', "Game window not found. Check the title.", RED_CODE)
@@ -459,30 +484,6 @@ def convert_seconds(seconds):
     minutes = int(seconds // 60)
     remaining_seconds = int(seconds % 60)
     return minutes, remaining_seconds
-
-
-def build_car_info(row):
-    make_loc_raw = row.get(LOCAL_MAKE_COL, '(0, 0)')
-    try:
-        make_loc = tuple(eval(make_loc_raw)) if isinstance(make_loc_raw, str) else tuple(make_loc_raw)
-    except Exception:
-        make_loc = (0, 0)
-
-    short_name = row.get('CAR MODEL(Short Name)', '')
-    if isinstance(short_name, str):
-        short_name = short_name.strip()
-    else:
-        short_name = ''
-    if not short_name:
-        short_name = row.get('CAR MODEL(Full Name)', '')
-
-    return {
-        'Make_Name': row.get('CAR MAKE', ''),
-        'Make_Loc': make_loc,
-        'Model_FName': row.get('CAR MODEL(Full Name)', ''),
-        'Model_SName': short_name,
-        'Model_Loc': int(row.get('MODEL LOC', 0) or 0),
-    }
 
 
 def something_wrong():
@@ -528,6 +529,9 @@ def main():
     failed_snipe = False
     previous_car_info = EMPTY_CAR_INFO.copy()
     start_time, all_snipe_index = time.time(), []
+    cars = get_cars_from_excel()
+    new_car_info = cars[0]
+    log_and_print('info', f'Today car list for sniping: {cars}')
 
     while not STOP_EVENT.is_set():
         wait_if_paused()
@@ -613,11 +617,11 @@ def main():
                         if found_buyoutsuccess:
                             end_time = time.time()
                             minutes, remaining_seconds = convert_seconds(end_time - start_time)
-                            log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Success!', GREEN_CODE)
-                            df.loc[index, 'BUYOUT NUM'] = df['BUYOUT NUM'][index] - 1
-                            write_excel(df, EXCEL_PATH, EXCEL_SHEET_NAME)
-                            if df.loc[index, 'BUYOUT NUM'] == 0:
-                                car_needs_swap_fl = True
+                            # log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Success!', GREEN_CODE)
+                            # df.loc[index, 'BUYOUT NUM'] = df['BUYOUT NUM'][index] - 1
+                            # write_excel(df, EXCEL_PATH, EXCEL_SHEET_NAME)
+                            # if df.loc[index, 'BUYOUT NUM'] == 0:
+                            #     car_needs_swap_fl = True
                             in_dr.tap('enter')
                             in_dr.tap('esc')
                             stop = True
