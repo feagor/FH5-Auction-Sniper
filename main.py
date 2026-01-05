@@ -125,19 +125,29 @@ EMPTY_CAR_INFO = {
 # Paths
 EXCEL_PATH = os.path.join(CURRENT_DIR, EXCEL_FILENAME)
 # Templates paths
-IMAGE_PATH_SA = os.path.join(CURRENT_DIR, 'images', LOCAL, 'SA.png')
-IMAGE_PATH_CF = os.path.join(CURRENT_DIR, 'images', LOCAL, 'CF.png')
-IMAGE_PATH_AT = os.path.join(CURRENT_DIR, 'images', LOCAL, 'AT.png')
-IMAGE_PATH_BF = os.path.join(CURRENT_DIR, 'images', LOCAL, 'BF.png')
-IMAGE_PATH_PB = os.path.join(CURRENT_DIR, 'images', LOCAL, 'PB.png')
-IMAGE_PATH_BS = os.path.join(CURRENT_DIR, 'images', LOCAL, 'BS.png')
-IMAGE_PATH_NB = os.path.join(CURRENT_DIR, 'images', LOCAL, 'NB.png')
-IMAGE_PATH_VS = os.path.join(CURRENT_DIR, 'images', LOCAL, 'VS.png')
-IMAGE_PATH_AO = os.path.join(CURRENT_DIR, 'images', LOCAL, 'AO.png')
-
-IMAGE_PATH_HMG = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMG.png')
+IMAGE_PATH_SA   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'SA.png')
+IMAGE_PATH_CF   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'CF.png')
+IMAGE_PATH_AT   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'AT.png')
+IMAGE_PATH_BF   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'BF.png')
+IMAGE_PATH_PB   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'PB.png')
+IMAGE_PATH_BS   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'BS.png')
+IMAGE_PATH_NB   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'NB.png')
+IMAGE_PATH_VS   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'VS.png')
+IMAGE_PATH_AO   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'AO.png')
+IMAGE_PATH_HMG  = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMG.png')
 IMAGE_PATH_HMMF = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMMF.png')
 IMAGE_PATH_HMBS = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMBS.png')
+
+# Screenshot matching parameters
+THRESHOLD = 0.8
+WIDTH_RATIO, HEIGHT_RATIO = 1, 1
+
+# Region globals
+REGION_HOME_TABS = (0,0,0,0)
+REGION_AUCTION_MAIN = (0,0,0,0)
+REGION_AUCTION_CAR_DESCR = (0,0,0,0)
+REGION_AUCTION_ACTION_MENU = (0,0,0,0)
+REGION_AUCTION_RESULT = (0,0,0,0)
 
 def setup_logging(debug_mode: bool):
     """
@@ -165,9 +175,7 @@ def setup_logging(debug_mode: bool):
     ch_formatter = ColorFormatter('%(asctime)s %(levelname)s: %(message)s', datefmt='%H:%M:%S')
     ch.setFormatter(ch_formatter)
     logger.addHandler(ch)
-
     return logger
-
 
 def log_and_print(level: str, message: str, color: str = None):
     """
@@ -207,8 +215,8 @@ def debug_screenshot(prefix_name, screenshot_cv):
         cv2.imwrite(out_path, screenshot_cv)
     else: pass
 
-    
-def get_template_match(image_path, region=None, width_ratio=1, height_ratio=1):
+
+def get_template_match(image_path, region=None, width_ratio=WIDTH_RATIO, height_ratio=HEIGHT_RATIO):
     """
     Take a screenshot of region, read template and run cv2.matchTemplate.
     Returns result matrix.
@@ -229,9 +237,7 @@ def get_template_match(image_path, region=None, width_ratio=1, height_ratio=1):
 def get_best_match_img_array(
     images_path,
     region=None,
-    width_ratio=1,
-    height_ratio=1,
-    threshold=0.8
+    threshold=THRESHOLD
 ):
     """
     Find best match among one or multiple template images inside region.
@@ -242,7 +248,7 @@ def get_best_match_img_array(
     best_prob,best_index,i = 0,0,0
     best_loc = ()
     for each_image_path in images_path:
-        result = get_template_match(each_image_path, region=region, width_ratio=width_ratio, height_ratio=height_ratio)
+        result = get_template_match(each_image_path, region=region)
         loc = np.where(result >= threshold)
         for pt in zip(*loc[::-1]):
             if best_prob < result[pt[1], pt[0]]:
@@ -259,37 +265,74 @@ def get_best_match_img_array(
     return None
 
 
-def press_image(image_path, search_region, width_ratio, height_ratio, threshold):
-    best_loc = get_best_match_img_array(image_path, search_region, width_ratio, height_ratio, threshold)
-    left, top, width, height = search_region
+def press_image(image_path, search_region):
+    best_loc = get_best_match_img_array(image_path, search_region)
+    #left, top, width, height = search_region
     if best_loc:
         in_dr.tap('enter')
         return True
     return False
 
-
-def set_auc_search_cond(old_car, new_car):
+def get_snipping_cars():
+    # read file and filter non-zero cars
+    df = pd.read_excel(EXCEL_PATH, EXCEL_SHEET_NAME)
+    # if len(df[df['BUYOUT NUM'] > 0]) == 0:
+    #     log_and_print('info', 'Finish Sniping!', GREEN_CODE)
+    #     STOP_EVENT.set()
+    #     break
+    # ignore car model location =-1
+    all_snipe_index = df[(df['BUYOUT NUM'] > 0) & (df['MODEL LOC']!=-1)].index.tolist() if all_snipe_index == [] else all_snipe_index
+    index = all_snipe_index.pop()
+    row = df.iloc[index]
+    Make_Name = row['CAR MAKE']
+    Model_FName = row['CAR MODEL(Full Name)']
+    new_car_info = build_car_info(row)
+def set_auc_search_cond(new_car, old_car):
     global FIRST_RUN
-
-    if FIRST_RUN:
-        log_and_print('info', 'Reseting search conditions', GREEN_CODE)
-        in_dr.tap('y', 1, 1)
-
+    log_and_print('info', 'Car need to be swapped', GREEN_CODE)
+    is_confirm_button_found = get_best_match_img_array(IMAGE_PATH_CF, REGION_AUCTION_MAIN)
+    if is_confirm_button_found:
+        if failed_snipe and not FIRST_RUN:
+            end_time = time.time()
+            minutes, remaining_seconds = convert_seconds(end_time - start_time)
+            log_and_print('info', f'[{minutes}:{remaining_seconds}] TIME OUT, Switching to Next Auction Sniper!', YELLOW_CODE)
+        failed_snipe = False
+        start_time = time.time()
+        
+        # reset cursor
+        active_game_window()
+        in_dr.move(WIN_SZ['left'] + 10, WIN_SZ['top'] + 40)
+        in_dr.burst(3)
+        in_dr.hold('w', 1.5)
+        log_and_print('info', f'Setting search to: {Make_Name}, {Model_FName}', GREEN_CODE)
+        set_auc_search_cond(new_car_info, previous_car_info)
+        previous_car_info = new_car_info
+        target_name = new_car_info.get('Model_SName') or new_car_info.get('Model_FName')
+        log_and_print('info', f'Start sniping {target_name}', GREEN_CODE)
+        if STOP_EVENT.is_set():
+            break
+    else:
+        something_wrong()
+        continue
+    
     def _get_point(loc):
         try:
             x, y = loc
             return np.array((int(x), int(y)))
         except Exception:
             return np.array((0, 0))
-
-    make_delta = _get_point(old_car.get('Make_Loc', (0, 0))) - _get_point(new_car.get('Make_Loc', (0, 0)))
+    
+    if FIRST_RUN:
+        log_and_print('info', 'Reseting search conditions', GREEN_CODE)
+        in_dr.tap('y', 1, 1) #reset search
+    make_delta = _get_point(old_car['Make_Loc']) - _get_point(new_car['Make_Loc'])
     Make_X_Delta = int(make_delta[0])
     Make_Y_Delta = int(make_delta[1])
 
     old_model_loc = old_car['Model_Loc']
     new_model_loc = new_car['Model_Loc']
 
-    if Make_X_Delta != 0 or Make_Y_Delta != 0:
+    if Make_X_Delta != 0 or Make_Y_Delta != 0: #not the same make
         in_dr.tap('enter')
         in_dr.wait(0.5)
         in_dr.step('w', 's', Make_Y_Delta)
@@ -299,8 +342,8 @@ def set_auc_search_cond(old_car, new_car):
         in_dr.tap('enter', 1, 0)
         in_dr.wait(0.5)
 
-    in_dr.tap('s')
-    in_dr.wait(1.5)
+    in_dr.tap('s') #goto model
+    in_dr.wait(0.5)
     if Make_X_Delta == 0 and Make_Y_Delta == 0:
         model_move_delta = new_model_loc - old_model_loc
     else:
@@ -308,7 +351,8 @@ def set_auc_search_cond(old_car, new_car):
     in_dr.step('d', 'a', model_move_delta, 0.3)
 
     if FIRST_RUN:
-        in_dr.tap('s', 3, 0.3)
+        in_dr.tap('s', 4, 0.3) #goto buyout price
+        in_dr.wait(0.5)
         prices = [
             1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000,
             11000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000,
@@ -317,10 +361,16 @@ def set_auc_search_cond(old_car, new_car):
             11000000, 20000000, 30000000
         ]
         price_index = bisect_right(prices, MAX_BUYOUT_PRICE) - 1
-        log_and_print('info', f'Setting buyout price to {prices[price_index]}', GREEN_CODE)
-        in_dr.tap('d', price_index, 0.2)
+        log_and_print('info', f'Parameter MAX_BUYOUT_PRICE= {MAX_BUYOUT_PRICE}. Available buyout price is {prices[price_index]} will be set', GREEN_CODE)
+        if MAX_BUYOUT_PRICE != prices[price_index]:
+            log_and_print('info', f'Closest buyout price is {prices[price_index]}', GREEN_CODE)
+        log_and_print('info', f'Set buyout price to {prices[price_index]}', GREEN_CODE)            
+        # setting buyout price, we have to tap one more time to set desire price
+        # cause price_index starts from 0, not from 1
+        in_dr.tap('d', price_index+1, 0.3) 
         FIRST_RUN = False
-    in_dr.tap('s', 3, 0.3)
+    in_dr.tap('s', 3, 0.3) #goto search button
+
 
 def active_game_window(title=GAME_TITLE):
     try:
@@ -363,6 +413,13 @@ def measure_game_window():
                 'width': game_window.width, 
                 'height': game_window.height}
             )
+            # Set regions based on measured window size    
+            REGION_HOME_TABS.update(520 + WIN_SZ['left'], 164 + WIN_SZ['top'], 570, 40)
+            REGION_AUCTION_MAIN.update(230 + WIN_SZ['left'], 590 + WIN_SZ['top'], 910, 310)
+            REGION_AUCTION_CAR_DESCR.update(790 + WIN_SZ['left'], 190 + WIN_SZ['top'], 810, 90)
+            REGION_AUCTION_ACTION_MENU.update(525 + WIN_SZ['left'], 330 + WIN_SZ['top'], 530, 190)
+            REGION_AUCTION_RESULT.update(60 + WIN_SZ['left'], 150 + WIN_SZ['top'], 180, 40)
+            return game_window
         else:
             log_and_print('error', "Game window not found. Check the title.", RED_CODE)
             exit_script()
@@ -378,15 +435,15 @@ def write_excel(data, output_path, sheet_name):
     workbook = load_workbook(output_path)
     sheet = workbook.active
     sheet.auto_filter.ref = sheet.dimensions
-    for col in sheet.columns:
-        max_length = 0
-        col_letter = col[0].column_letter
-        for cell in col:
-            try:
-                max_length = max(max_length, len(str(cell.value)))
-            except Exception:
-                pass
-        sheet.column_dimensions[col_letter].width = max_length + 2
+    # for col in sheet.columns:
+    #     max_length = 0
+    #     col_letter = col[0].column_letter
+    #     for cell in col:
+    #         try:
+    #             max_length = max(max_length, len(str(cell.value)))
+    #         except Exception:
+    #             pass
+    #     sheet.column_dimensions[col_letter].width = max_length + 2
     workbook.save(output_path)
 
 
@@ -462,15 +519,6 @@ def main():
         overlay_controller.launch((WIN_SZ['left'], WIN_SZ['top'], WIN_SZ['width'], WIN_SZ['height']))
     else:
         logger.debug('Overlay disabled: tkinter module not available')
-
-    # screenshot params and regions
-    threshold = 0.8
-    width_ratio, height_ratio = 1, 1
-    REGION_HOME_TABS = (520 + WIN_SZ['left'], 164 + WIN_SZ['top'], 570, 40)
-    REGION_AUCTION_MAIN = (230 + WIN_SZ['left'], 590 + WIN_SZ['top'], 910, 310)
-    REGION_AUCTION_CAR_DESCR = (790 + WIN_SZ['left'], 190 + WIN_SZ['top'], 810, 90)
-    REGION_AUCTION_ACTION_MENU = (525 + WIN_SZ['left'], 330 + WIN_SZ['top'], 530, 190)
-    REGION_AUCTION_RESULT = (60 + WIN_SZ['left'], 150 + WIN_SZ['top'], 180, 40)
     
     log_and_print('info', 'The script will start in 5 seconds', YELLOW_CODE)
     in_dr.wait(5)
@@ -493,13 +541,13 @@ def main():
         if STOP_EVENT.is_set():
             break
 
-        is_search_auc_pressed = press_image(IMAGE_PATH_SA, REGION_AUCTION_MAIN, width_ratio, height_ratio, threshold)
+        is_search_auc_pressed = press_image(IMAGE_PATH_SA, REGION_AUCTION_MAIN)
         in_dr.wait(0.5)
         wait_if_paused()
         if STOP_EVENT.is_set():
             break
         if not is_search_auc_pressed:
-            Home_Page_found = get_best_match_img_array([IMAGE_PATH_HMG, IMAGE_PATH_HMBS, IMAGE_PATH_HMMF], REGION_HOME_TABS, width_ratio, height_ratio, threshold)
+            Home_Page_found = get_best_match_img_array([IMAGE_PATH_HMG, IMAGE_PATH_HMBS, IMAGE_PATH_HMMF], REGION_HOME_TABS)
             if Home_Page_found:
                 in_dr.hold('a', 5)
                 in_dr.tap('w')
@@ -510,55 +558,18 @@ def main():
             continue
 
         if car_needs_swap_fl:
-            log_and_print('info', 'Car need to be changed', GREEN_CODE)
-            is_confirm_button_found = get_best_match_img_array(IMAGE_PATH_CF, REGION_AUCTION_MAIN, width_ratio, height_ratio, threshold)
-            if is_confirm_button_found:
-                if failed_snipe and not FIRST_RUN:
-                    end_time = time.time()
-                    minutes, remaining_seconds = convert_seconds(end_time - start_time)
-                    log_and_print('info', f'[{minutes}:{remaining_seconds}] TIME OUT, Switching to Next Auction Sniper!', YELLOW_CODE)
-                failed_snipe = False
-                start_time = time.time()
-                car_needs_swap_fl = False
+            set_auc_search_cond(new_car_info, previous_car_info)
+            car_needs_swap_fl = False
 
-                # read file and filter non-zero cars
-                df = pd.read_excel(EXCEL_PATH, EXCEL_SHEET_NAME)
-                if len(df[df['BUYOUT NUM'] > 0]) == 0:
-                    log_and_print('info', 'Finish Sniping!', GREEN_CODE)
-                    STOP_EVENT.set()
-                    break
-                # ignore car model location =-1
-                all_snipe_index = df[(df['BUYOUT NUM'] > 0) & (df['MODEL LOC']!=-1)].index.tolist() if all_snipe_index == [] else all_snipe_index
-                index = all_snipe_index.pop()
-                row = df.iloc[index]
-                Make_Name = row['CAR MAKE']
-                Model_FName = row['CAR MODEL(Full Name)']
-                new_car_info = build_car_info(row)
-                # reset cursor
-                active_game_window()
-                in_dr.move(WIN_SZ['left'] + 10, WIN_SZ['top'] + 40)
-                in_dr.burst(3)
-                in_dr.hold('w', 1.5)
-                log_and_print('info', f'Setting search to: {Make_Name}, {Model_FName}', GREEN_CODE)
-                set_auc_search_cond(previous_car_info, new_car_info)
-                previous_car_info = new_car_info
-                target_name = new_car_info.get('Model_SName') or new_car_info.get('Model_FName')
-                log_and_print('info', f'Start sniping {target_name}', GREEN_CODE)
-                if STOP_EVENT.is_set():
-                    break
-            else:
-                something_wrong()
-                continue
-
-        is_confirm_button_pressed = press_image(IMAGE_PATH_CF, REGION_AUCTION_MAIN, width_ratio, height_ratio, threshold)
+        is_confirm_button_pressed = press_image(IMAGE_PATH_CF, REGION_AUCTION_MAIN)
         in_dr.wait(WAIT_RESULT_TIME)
         wait_if_paused()
         if STOP_EVENT.is_set():
             break
-        is_auc_res_found = get_best_match_img_array(IMAGE_PATH_NB, REGION_AUCTION_RESULT, width_ratio, height_ratio, threshold)
+        is_auc_res_found = get_best_match_img_array(IMAGE_PATH_NB, REGION_AUCTION_RESULT)
         if is_auc_res_found:
             logger.debug('Auction results found')
-            is_car_found = get_best_match_img_array(IMAGE_PATH_AT, REGION_AUCTION_CAR_DESCR, width_ratio, height_ratio, threshold)
+            is_car_found = get_best_match_img_array(IMAGE_PATH_AT, REGION_AUCTION_CAR_DESCR)
             if is_car_found:
                 log_and_print('debug', 'Car found in stock')
                 stop = False
@@ -570,9 +581,9 @@ def main():
                     wait_if_paused()
                     in_dr.wait(0.1)
                     in_dr.tap('y')
-                    found_PB = get_best_match_img_array(IMAGE_PATH_PB, REGION_AUCTION_ACTION_MENU, width_ratio, height_ratio, threshold)
-                    found_VS = get_best_match_img_array(IMAGE_PATH_VS, REGION_AUCTION_ACTION_MENU, width_ratio, height_ratio, threshold)
-                    found_AO = get_best_match_img_array(IMAGE_PATH_AO, REGION_AUCTION_ACTION_MENU, width_ratio, height_ratio, threshold)
+                    found_PB = get_best_match_img_array(IMAGE_PATH_PB, REGION_AUCTION_ACTION_MENU)
+                    found_VS = get_best_match_img_array(IMAGE_PATH_VS, REGION_AUCTION_ACTION_MENU)
+                    found_AO = get_best_match_img_array(IMAGE_PATH_AO, REGION_AUCTION_ACTION_MENU)
                     if found_PB or found_VS or found_AO:
                         stop = True
                     in_dr.wait(0.3)
@@ -590,8 +601,8 @@ def main():
                             stop = True
                             break
                         wait_if_paused()
-                        found_buyoutfail = get_best_match_img_array(IMAGE_PATH_BF, REGION_AUCTION_ACTION_MENU, width_ratio, height_ratio, threshold)
-                        found_buyoutsuccess = get_best_match_img_array(IMAGE_PATH_BS, REGION_AUCTION_ACTION_MENU, width_ratio, height_ratio, threshold)
+                        found_buyoutfail = get_best_match_img_array(IMAGE_PATH_BF, REGION_AUCTION_ACTION_MENU)
+                        found_buyoutsuccess = get_best_match_img_array(IMAGE_PATH_BS, REGION_AUCTION_ACTION_MENU)
                         if found_buyoutfail:
                             end_time = time.time()
                             minutes, remaining_seconds = convert_seconds(end_time - start_time)
@@ -628,7 +639,7 @@ def main():
                 continue
         else:
             log_and_print('debug', 'Auction results not found :(')
-            Home_Page_found = get_best_match_img_array([IMAGE_PATH_HMG, IMAGE_PATH_HMBS, IMAGE_PATH_HMMF], REGION_HOME_TABS, width_ratio, height_ratio, threshold)
+            Home_Page_found = get_best_match_img_array([IMAGE_PATH_HMG, IMAGE_PATH_HMBS, IMAGE_PATH_HMMF], REGION_HOME_TABS)
             something_wrong()
             continue
 
