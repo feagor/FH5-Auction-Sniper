@@ -13,12 +13,14 @@ import pandas as pd
 from openpyxl import load_workbook
 
 import pygetwindow as gw
-import pyautogui as pyau
+from mss import mss
 import pydirectinput as pydi
 import get_monitors as gm
 import colorama
 
 from overlay import OverlayController
+
+sct = mss()
 
 class InputDriver:
     """Wraps keyboard/mouse automation with configurable timing."""
@@ -44,9 +46,9 @@ class InputDriver:
             self.tap(dec_key, abs(delta), interval)
 
     def hold(self, key: str, duration: float = 5) -> None:
-        self.pointer.keyDown(key)
+        self.keyboard.keyDown(key)
         self.wait(duration)
-        self.pointer.keyUp(key)
+        self.keyboard.keyUp(key)
 
     def mouse_move(self, x: int, y: int, duration: float = 0.01) -> None:
         self.pointer.moveTo(x, y, duration=duration)
@@ -212,15 +214,21 @@ def debug_screenshot(prefix_name, screenshot_cv):
         cv2.imwrite(out_path, screenshot_cv)
     else: pass
 
+def capture_screen(region=None):
+    if region:
+        left, top, width, height = region
+        monitor = {"left": left, "top": top, "width": width, "height": height}
+    else:
+        monitor = sct.monitors[0]
+    shot = sct.grab(monitor)
+    return cv2.cvtColor(np.array(shot), cv2.COLOR_BGRA2BGR)
 
 def get_template_match(image_path, region=None, width_ratio=WIDTH_RATIO, height_ratio=HEIGHT_RATIO):
     """
     Take a screenshot of region, read template and run cv2.matchTemplate.
     Returns result matrix.
     """
-    screenshot = pyau.screenshot(region=region)
-    screenshot_cv = np.array(screenshot)
-    screenshot_cv = cv2.cvtColor(screenshot_cv, cv2.COLOR_RGB2BGR)
+    screenshot_cv = capture_screen(region=region)
     template = cv2.imread(image_path, cv2.IMREAD_COLOR)
     screenshot_cv = cv2.resize(screenshot_cv, (int(screenshot_cv.shape[1]/width_ratio), int(screenshot_cv.shape[0]/height_ratio)))
     result = cv2.matchTemplate(screenshot_cv, template, cv2.TM_CCOEFF_NORMED)
@@ -421,11 +429,11 @@ def set_auc_search_cond(new_car, old_car):
     log_and_print('info', 'Car need to be swapped', GREEN_CODE)
     is_confirm_button_found = get_best_match_img_array(IMAGE_PATH_CF, REGION_AUCTION_MAIN)
     if is_confirm_button_found:
-        if failed_snipe and not FIRST_RUN:
-            end_time = time.time()
-            minutes, remaining_seconds = convert_seconds(end_time - start_time)
-            log_and_print('info', f'[{minutes}:{remaining_seconds}] TIME OUT, Switching to Next Auction Sniper!', YELLOW_CODE)
-        failed_snipe = False
+        # if failed_snipe and not FIRST_RUN:
+        #     end_time = time.time()
+        #     minutes, remaining_seconds = convert_seconds(end_time - start_time)
+        #     log_and_print('info', f'[{minutes}:{remaining_seconds}] TIME OUT, Switching to Next Auction Sniper!', YELLOW_CODE)
+        # failed_snipe = False
         start_time = time.time()
         
         # reset cursor
@@ -514,12 +522,15 @@ def main():
 
     car_needs_swap_fl = True
     failed_snipe = False
-    previous_car_info = EMPTY_CAR_INFO.copy()
+    prev_car = EMPTY_CAR_INFO.copy()
     start_time, all_snipe_index = time.time(), []
     cars = load_cars_from_excel()
-    formatted_cars = '\n'.join(f'  {idx}. {car}' for idx, car in enumerate(cars, 1))
-    log_and_print('info', f'Today car list for sniping:\n{formatted_cars}')
-    new_car_info = cars[0]
+    formatted_cars = ' '.join(
+        f'{idx}. {car["Make_Name"]}, {car["Model_SName"]} - {car["Buyout_num"]} pct\n'
+        for idx, car in enumerate(cars, 1)
+    )
+    log_and_print('info', f'Today car list for sniping:\n {formatted_cars}')
+    sniping_car = cars[0]
 
     while not STOP_EVENT.is_set():
         wait_if_paused()
@@ -550,7 +561,7 @@ def main():
             continue
 
         if car_needs_swap_fl:
-            set_auc_search_cond(new_car_info, previous_car_info)
+            set_auc_search_cond(sniping_car, prev_car)
             car_needs_swap_fl = False
 
         is_confirm_button_pressed = press_image(IMAGE_PATH_CF, REGION_AUCTION_MAIN)
@@ -606,8 +617,8 @@ def main():
                             end_time = time.time()
                             minutes, remaining_seconds = convert_seconds(end_time - start_time)
                             log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Success!', GREEN_CODE)
-                            update_buyout(new_car_info['Excel_index'], new_car_info['Buyout_num'] - 1)
-                            if new_car_info['Buyout_num'] - 1 == 0:
+                            update_buyout(sniping_car['Excel_index'], sniping_car['Buyout_num'] - 1)
+                            if sniping_car['Buyout_num'] - 1 == 0:
                                 car_needs_swap_fl = True
                             in_dr.tap('enter')
                             in_dr.tap('esc')
@@ -647,9 +658,8 @@ overlay_controller = OverlayController(
     log_callback=log_and_print,
     color_map={'resume': GREEN_CODE, 'pause': YELLOW_CODE, 'stop': RED_CODE},
 )
-in_dr = InputDriver(pydi, pyau, INPUT_DELAY_SCALE)
+in_dr = InputDriver(pydi, pydi, INPUT_DELAY_SCALE)
 colorama.init(wrap=True)
-pyau.PAUSE = 0
 pydi.PAUSE = 0
 ##END INIT BLOCK##
 
