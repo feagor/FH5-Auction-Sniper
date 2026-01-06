@@ -20,8 +20,6 @@ import colorama
 
 from overlay import OverlayController
 
-sct = mss()
-
 class InputDriver:
     """Wraps keyboard/mouse automation with configurable timing."""
 
@@ -112,8 +110,7 @@ class ColorFormatter(logging.Formatter):
         else:
             return message
 
-WIN_SZ = {'left': 0, 'top': 0, 'width': 0, 'height': 0}
-FIRST_RUN = True
+
 MISSED_MATCH_TIMES = 1
 PAUSE_EVENT = threading.Event()
 STOP_EVENT = threading.Event()
@@ -141,15 +138,24 @@ IMAGE_PATH_AO   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'AO.png')
 IMAGE_PATH_HMG  = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMG.png')
 IMAGE_PATH_HMMF = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMMF.png')
 IMAGE_PATH_HMBS = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMBS.png')
-# Screenshot matching parameters
-THRESHOLD = 0.8
-WIDTH_RATIO, HEIGHT_RATIO = 1, 1
+
 # Region globals
 REGION_HOME_TABS = (0,0,0,0)
 REGION_AUCTION_MAIN = (0,0,0,0)
 REGION_AUCTION_CAR_DESCR = (0,0,0,0)
 REGION_AUCTION_ACTION_MENU = (0,0,0,0)
 REGION_AUCTION_RESULT = (0,0,0,0)
+
+# Screenshot matching parameters
+THRESHOLD = 0.8
+WIDTH_RATIO, HEIGHT_RATIO = 1, 1
+
+win_size = {'left': 0, 'top': 0, 'width': 0, 'height': 0}
+first_run = True
+start_time = time.time()
+failed_snipe = False
+sct = mss()
+
 
 def setup_logging(debug_mode: bool):
     """
@@ -202,6 +208,16 @@ def wait_if_paused(poll_interval: float = 0.1):
         in_dr.wait(poll_interval)
 
 
+def capture_screen(region=None):
+    if region:
+        left, top, width, height = region
+        monitor = {"left": left, "top": top, "width": width, "height": height}
+    else:
+        monitor = sct.monitors[0]
+    shot = sct.grab(monitor)
+    return cv2.cvtColor(np.array(shot), cv2.COLOR_BGRA2BGR)
+
+
 def debug_screenshot(prefix_name, screenshot_cv):
     if DEBUG_MODE:
         debug_dir = os.path.join(CURRENT_DIR, 'debug', 'screen')
@@ -214,14 +230,6 @@ def debug_screenshot(prefix_name, screenshot_cv):
         cv2.imwrite(out_path, screenshot_cv)
     else: pass
 
-def capture_screen(region=None):
-    if region:
-        left, top, width, height = region
-        monitor = {"left": left, "top": top, "width": width, "height": height}
-    else:
-        monitor = sct.monitors[0]
-    shot = sct.grab(monitor)
-    return cv2.cvtColor(np.array(shot), cv2.COLOR_BGRA2BGR)
 
 def get_template_match(image_path, region=None, width_ratio=WIDTH_RATIO, height_ratio=HEIGHT_RATIO):
     """
@@ -295,7 +303,7 @@ def active_game_window(title=GAME_TITLE):
             except Exception:
                 logger.exception("Failed to activate/restore window")
                 exit_script()
-        WIN_SZ.update(
+        win_size.update(
             {'left': game_window.left, 
             'top': game_window.top, 
             'width': game_window.width, 
@@ -314,7 +322,7 @@ def measure_game_window():
         game_window = active_game_window()
         if game_window:
             game_window.resizeTo(1616, 939)
-            WIN_SZ.update(
+            win_size.update(
                 {'left': game_window.left, 
                 'top': game_window.top, 
                 'width': game_window.width, 
@@ -322,32 +330,32 @@ def measure_game_window():
             )
             # Set regions based on measured window size    
             REGION_HOME_TABS = (
-                520 + WIN_SZ['left'],
-                164 + WIN_SZ['top'],
+                520 + win_size['left'],
+                164 + win_size['top'],
                 570,
                 40,
             )
             REGION_AUCTION_MAIN = (
-                230 + WIN_SZ['left'],
-                590 + WIN_SZ['top'],
+                230 + win_size['left'],
+                590 + win_size['top'],
                 910,
                 310,
             )
             REGION_AUCTION_CAR_DESCR = (
-                790 + WIN_SZ['left'],
-                190 + WIN_SZ['top'],
+                790 + win_size['left'],
+                190 + win_size['top'],
                 810,
                 90,
             )
             REGION_AUCTION_ACTION_MENU = (
-                525 + WIN_SZ['left'],
-                330 + WIN_SZ['top'],
+                525 + win_size['left'],
+                330 + win_size['top'],
                 530,
                 190,
             )
             REGION_AUCTION_RESULT = (
-                60 + WIN_SZ['left'],
-                150 + WIN_SZ['top'],
+                60 + win_size['left'],
+                150 + win_size['top'],
                 180,
                 40,
             )
@@ -384,6 +392,34 @@ def something_wrong():
         log_and_print('error', 'Fail to detect anything, try to restart the script or game!', RED_CODE)
         exit_script()
     MISSED_MATCH_TIMES += 1
+
+
+def pre_check():
+    log_and_print('info', 'Welcome to the Forza 5 CAR BUYOUT Sniper', YELLOW_CODE)
+    log_and_print('info', 'Running pre-check: monitor and game resolution', BLUE_CODE)
+    monitors = gm.get_monitors()
+    log_and_print('debug', f"Monitors data: {monitors}", CYAN_CODE)
+    active_game_window()
+    log_and_print('info', f"Game window {GAME_TITLE} found at ({win_size['left']},{win_size['top']}) with resolution {win_size['width']}x{win_size['height']}", CYAN_CODE)
+    cx = win_size['left'] + win_size['width'] / 2
+    cy = win_size['top'] + win_size['height'] / 2
+    mon = gm.find_monitor_for_point(cx, cy, monitors)
+    if mon:
+        log_and_print('info', f"Center of the game window is at ({cx:.0f}, {cy:.0f}) on monitor: {mon.get('name')} {mon.get('resolution')}", CYAN_CODE)
+    else:
+        log_and_print('error', f"Center of the game window is at ({cx:.0f}, {cy:.0f}) not found on any monitor", RED_CODE)
+        exit_script()
+    measure_game_window()
+    log_and_print('info', f"Resize {GAME_TITLE} resolution to {win_size['width']}x{win_size['height']} pixels!", CYAN_CODE)
+    
+    if overlay_controller.available:
+        overlay_controller.launch((win_size['left'], win_size['top'], win_size['width'], win_size['height']))
+    else:
+        logger.debug('Overlay disabled: tkinter module not available')
+    
+    log_and_print('info', 'The script will start in 5 seconds', YELLOW_CODE)
+    in_dr.wait(5)
+    log_and_print('info', 'Script started', YELLOW_CODE)
 
 
 def load_cars_from_excel():
@@ -425,7 +461,7 @@ def update_buyout(row_index: int, buyout_num: int) -> None:
 
 
 def set_auc_search_cond(new_car, old_car):
-    global FIRST_RUN
+    global first_run, start_time
     log_and_print('info', 'Car need to be swapped', GREEN_CODE)
     is_confirm_button_found = get_best_match_img_array(IMAGE_PATH_CF, REGION_AUCTION_MAIN)
     if is_confirm_button_found:
@@ -434,18 +470,17 @@ def set_auc_search_cond(new_car, old_car):
         #     minutes, remaining_seconds = convert_seconds(end_time - start_time)
         #     log_and_print('info', f'[{minutes}:{remaining_seconds}] TIME OUT, Switching to Next Auction Sniper!', YELLOW_CODE)
         # failed_snipe = False
-        start_time = time.time()
         
         # reset cursor
         active_game_window()
-        in_dr.mouse_move(WIN_SZ['left'] + 10, WIN_SZ['top'] + 40)
+        in_dr.mouse_move(win_size['left'] + 10, win_size['top'] + 40)
         in_dr.burst(3)
         if STOP_EVENT.is_set():
             return
     else:
         something_wrong()  
     
-    if FIRST_RUN:
+    if first_run:
         log_and_print('info', 'Reseting search conditions', YELLOW_CODE)
         in_dr.tap('y', 1, 1) #reset search
     
@@ -471,7 +506,7 @@ def set_auc_search_cond(new_car, old_car):
         Model_X_Delta = new_car['Model_Loc']
     in_dr.step('d', 'a', Model_X_Delta, 0.3)
 
-    if FIRST_RUN:
+    if first_run:
         in_dr.tap('s', 4, 0.3) #goto buyout price
         in_dr.wait(0.5)
         prices = [
@@ -488,42 +523,18 @@ def set_auc_search_cond(new_car, old_car):
         # setting buyout price, we have to tap one more time to set desire price
         # cause price_index starts from 0, not from 1
         in_dr.tap('d', price_index+1, 0.3) 
-        FIRST_RUN = False
+        first_run = False
     in_dr.tap('s', 3, 0.3) #goto search button
     log_and_print('info', f'Start sniping {new_car.get("Make_Name")}, {new_car.get("Model_FName")}', GREEN_CODE)
+    start_time = time.time()
 
 
 def main():
-    log_and_print('info', 'Welcome to the Forza 5 CAR BUYOUT Sniper', YELLOW_CODE)
-    log_and_print('info', 'Running pre-check: monitor and game resolution', BLUE_CODE)
-    monitors = gm.get_monitors()
-    log_and_print('debug', f"Monitors data: {monitors}", CYAN_CODE)
-    active_game_window()
-    log_and_print('info', f"Game window {GAME_TITLE} found at ({WIN_SZ['left']},{WIN_SZ['top']}) with resolution {WIN_SZ['width']}x{WIN_SZ['height']}", CYAN_CODE)
-    cx = WIN_SZ['left'] + WIN_SZ['width'] / 2
-    cy = WIN_SZ['top'] + WIN_SZ['height'] / 2
-    mon = gm.find_monitor_for_point(cx, cy, monitors)
-    if mon:
-        log_and_print('info', f"Center of the game window is at ({cx:.0f}, {cy:.0f}) on monitor: {mon.get('name')} {mon.get('resolution')}", CYAN_CODE)
-    else:
-        log_and_print('error', f"Center of the game window is at ({cx:.0f}, {cy:.0f}) not found on any monitor", RED_CODE)
-        exit_script()
-    measure_game_window()
-    log_and_print('info', f"Resize {GAME_TITLE} resolution to {WIN_SZ['width']}x{WIN_SZ['height']} pixels!", CYAN_CODE)
-    
-    if overlay_controller.available:
-        overlay_controller.launch((WIN_SZ['left'], WIN_SZ['top'], WIN_SZ['width'], WIN_SZ['height']))
-    else:
-        logger.debug('Overlay disabled: tkinter module not available')
-    
-    log_and_print('info', 'The script will start in 5 seconds', YELLOW_CODE)
-    in_dr.wait(5)
-    log_and_print('info', 'Script started', YELLOW_CODE)
-
+    pre_check()
     car_needs_swap_fl = True
-    failed_snipe = False
+    
     prev_car = EMPTY_CAR_INFO.copy()
-    start_time, all_snipe_index = time.time(), []
+    
     cars = load_cars_from_excel()
     formatted_cars = ' '.join(
         f'{idx}. {car["Make_Name"]}, {car["Model_SName"]} - {car["Buyout_num"]} pct\n'
@@ -648,6 +659,7 @@ def main():
     STOP_EVENT.set()
     log_and_print('info', 'Automation stopped.', YELLOW_CODE)
 
+
 ##INIT BLOCK##
 logger = setup_logging(DEBUG_MODE)
 
@@ -661,6 +673,7 @@ overlay_controller = OverlayController(
 in_dr = InputDriver(pydi, pydi, INPUT_DELAY_SCALE)
 colorama.init(wrap=True)
 pydi.PAUSE = 0
+
 ##END INIT BLOCK##
 
 if __name__ == "__main__":
