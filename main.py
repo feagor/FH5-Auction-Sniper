@@ -48,7 +48,7 @@ class InputDriver:
         self.wait(duration)
         self.pointer.keyUp(key)
 
-    def move(self, x: int, y: int, duration: float = 0.01) -> None:
+    def mouse_move(self, x: int, y: int, duration: float = 0.01) -> None:
         self.pointer.moveTo(x, y, duration=duration)
 
     def click(self) -> None:
@@ -271,108 +271,6 @@ def press_image(image_path, search_region):
     return False
 
 
-def get_cars_from_excel():
-    df = pd.read_excel(EXCEL_PATH, EXCEL_SHEET_NAME)
-    valid_rows = df[(df['BUYOUT NUM'] > 0) & (df['MODEL LOC'] != -1)]
-    cars = []
-    for idx, row in valid_rows.iterrows():        
-        car_info = EMPTY_CAR_INFO.copy()
-        car_info['Excel_index'] = int(idx)
-        car_info['Make_Name'] = row['CAR MAKE']
-        make_loc = [int(part) for part in row[LOCAL_MAKE_COL].strip('()').split(',')]
-        car_info['Make_Loc'] = make_loc
-        car_info['Model_FName'] = row['CAR MODEL(Full Name)']
-        car_info['Model_SName'] = row['CAR MODEL(Short Name)']
-        car_info['Model_Loc'] = row['MODEL LOC']
-        car_info['Buyout_num'] = int(row['BUYOUT NUM'] or 0)
-        cars.append(car_info)
-    return cars
-
-
-def set_auc_search_cond(new_car, old_car):
-    global FIRST_RUN
-    log_and_print('info', 'Car need to be swapped', GREEN_CODE)
-    is_confirm_button_found = get_best_match_img_array(IMAGE_PATH_CF, REGION_AUCTION_MAIN)
-    if is_confirm_button_found:
-        if failed_snipe and not FIRST_RUN:
-            end_time = time.time()
-            minutes, remaining_seconds = convert_seconds(end_time - start_time)
-            log_and_print('info', f'[{minutes}:{remaining_seconds}] TIME OUT, Switching to Next Auction Sniper!', YELLOW_CODE)
-        failed_snipe = False
-        start_time = time.time()
-        
-        # reset cursor
-        active_game_window()
-        in_dr.move(WIN_SZ['left'] + 10, WIN_SZ['top'] + 40)
-        in_dr.burst(3)
-        in_dr.hold('w', 1.5)
-        log_and_print('info', f'Setting search to: {Make_Name}, {Model_FName}', GREEN_CODE)
-        set_auc_search_cond(new_car_info, previous_car_info)
-        previous_car_info = new_car_info
-        target_name = new_car_info.get('Model_SName') or new_car_info.get('Model_FName')
-        log_and_print('info', f'Start sniping {target_name}', GREEN_CODE)
-        if STOP_EVENT.is_set():
-            return
-    else:
-        something_wrong()        
-    
-    def _get_point(loc):
-        try:
-            x, y = loc
-            return np.array((int(x), int(y)))
-        except Exception:
-            return np.array((0, 0))
-    
-    if FIRST_RUN:
-        log_and_print('info', 'Reseting search conditions', GREEN_CODE)
-        in_dr.tap('y', 1, 1) #reset search
-    make_delta = _get_point(old_car['Make_Loc']) - _get_point(new_car['Make_Loc'])
-    Make_X_Delta = int(make_delta[0])
-    Make_Y_Delta = int(make_delta[1])
-
-    old_model_loc = old_car['Model_Loc']
-    new_model_loc = new_car['Model_Loc']
-
-    if Make_X_Delta != 0 or Make_Y_Delta != 0: #not the same make
-        in_dr.tap('enter')
-        in_dr.wait(0.5)
-        in_dr.step('w', 's', Make_Y_Delta)
-        in_dr.wait(0.5)
-        in_dr.step('a', 'd', Make_X_Delta)
-        in_dr.wait(1)
-        in_dr.tap('enter', 1, 0)
-        in_dr.wait(0.5)
-
-    in_dr.tap('s') #goto model
-    in_dr.wait(0.5)
-    if Make_X_Delta == 0 and Make_Y_Delta == 0:
-        model_move_delta = new_model_loc - old_model_loc
-    else:
-        model_move_delta = new_model_loc
-    in_dr.step('d', 'a', model_move_delta, 0.3)
-
-    if FIRST_RUN:
-        in_dr.tap('s', 4, 0.3) #goto buyout price
-        in_dr.wait(0.5)
-        prices = [
-            1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000,
-            11000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000,
-            110000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000,
-            1100000, 2000000, 3000000, 4000000, 5000000, 6000000, 7000000, 8000000, 9000000, 10000000,
-            11000000, 20000000, 30000000
-        ]
-        price_index = bisect_right(prices, MAX_BUYOUT_PRICE) - 1
-        log_and_print('info', f'Parameter MAX_BUYOUT_PRICE= {MAX_BUYOUT_PRICE}. Available buyout price is {prices[price_index]} will be set', GREEN_CODE)
-        if MAX_BUYOUT_PRICE != prices[price_index]:
-            log_and_print('info', f'Closest buyout price is {prices[price_index]}', GREEN_CODE)
-        log_and_print('info', f'Set buyout price to {prices[price_index]}', GREEN_CODE)            
-        # setting buyout price, we have to tap one more time to set desire price
-        # cause price_index starts from 0, not from 1
-        in_dr.tap('d', price_index+1, 0.3) 
-        FIRST_RUN = False
-    in_dr.tap('s', 3, 0.3) #goto search button
-
-
 def active_game_window(title=GAME_TITLE):
     try:
         windows = gw.getWindowsWithTitle(title)
@@ -454,25 +352,6 @@ def measure_game_window():
         exit_script()
 
 
-def write_excel(data, output_path, sheet_name):
-    """Persist the DataFrame to Excel, re-open it for formatting, 
-    enable autofilter, and auto-size each column before saving."""
-    data.to_excel(output_path, index=False, sheet_name=sheet_name)
-    workbook = load_workbook(output_path)
-    sheet = workbook.active
-    sheet.auto_filter.ref = sheet.dimensions
-    # for col in sheet.columns:
-    #     max_length = 0
-    #     col_letter = col[0].column_letter
-    #     for cell in col:
-    #         try:
-    #             max_length = max(max_length, len(str(cell.value)))
-    #         except Exception:
-    #             pass
-    #     sheet.column_dimensions[col_letter].width = max_length + 2
-    workbook.save(output_path)
-
-
 def exit_script():
     log_and_print('error', 'Script exits in 2 seconds!', RED_CODE)
     in_dr.wait(2)
@@ -497,6 +376,113 @@ def something_wrong():
         log_and_print('error', 'Fail to detect anything, try to restart the script or game!', RED_CODE)
         exit_script()
     MISSED_MATCH_TIMES += 1
+
+
+def load_cars_from_excel():
+    df = pd.read_excel(EXCEL_PATH, EXCEL_SHEET_NAME)
+    valid_rows = df[(df['BUYOUT NUM'] > 0) & (df['MODEL LOC'] != -1)]
+    cars = []
+    for idx, row in valid_rows.iterrows():        
+        car_info = EMPTY_CAR_INFO.copy()
+        car_info['Excel_index'] = int(idx)
+        car_info['Make_Name'] = row['CAR MAKE']
+        make_loc = [int(part) for part in row[LOCAL_MAKE_COL].strip('()').split(',')]
+        car_info['Make_Loc'] = make_loc
+        car_info['Model_FName'] = row['CAR MODEL(Full Name)']
+        car_info['Model_SName'] = row['CAR MODEL(Short Name)']
+        car_info['Model_Loc'] = row['MODEL LOC']
+        car_info['Buyout_num'] = int(row['BUYOUT NUM'] or 0)
+        cars.append(car_info)
+    return cars
+
+
+def update_buyout(row_index: int, buyout_num: int) -> None:
+    try:
+        wb = load_workbook(EXCEL_PATH)
+        ws = wb[EXCEL_SHEET_NAME]
+        target_row = row_index + 2  # +1 for header, +1 because Excel rows are 1-based
+        buyout_col = None
+        for cell in ws[1]:
+            if str(cell.value).strip().upper() == 'BUYOUT NUM':
+                buyout_col = cell.column
+                break
+        if buyout_col is None:
+            log_and_print('error', 'Column BUYOUT NUM not found in Excel sheet', RED_CODE)
+            return
+        ws.cell(row=target_row, column=buyout_col, value=int(buyout_num))
+        wb.save(EXCEL_PATH)
+        log_and_print('debug', f'Updated BUYOUT NUM at row {row_index} to {buyout_num}', GREEN_CODE)
+    except Exception as exc:
+        log_and_print('error', f'Failed to update BUYOUT NUM: {exc}', RED_CODE)
+
+
+def set_auc_search_cond(new_car, old_car):
+    global FIRST_RUN
+    log_and_print('info', 'Car need to be swapped', GREEN_CODE)
+    is_confirm_button_found = get_best_match_img_array(IMAGE_PATH_CF, REGION_AUCTION_MAIN)
+    if is_confirm_button_found:
+        if failed_snipe and not FIRST_RUN:
+            end_time = time.time()
+            minutes, remaining_seconds = convert_seconds(end_time - start_time)
+            log_and_print('info', f'[{minutes}:{remaining_seconds}] TIME OUT, Switching to Next Auction Sniper!', YELLOW_CODE)
+        failed_snipe = False
+        start_time = time.time()
+        
+        # reset cursor
+        active_game_window()
+        in_dr.mouse_move(WIN_SZ['left'] + 10, WIN_SZ['top'] + 40)
+        in_dr.burst(3)
+        if STOP_EVENT.is_set():
+            return
+    else:
+        something_wrong()  
+    
+    if FIRST_RUN:
+        log_and_print('info', 'Reseting search conditions', YELLOW_CODE)
+        in_dr.tap('y', 1, 1) #reset search
+    
+    log_and_print('info', f'Setting search to: {new_car.get("Make_Name")}, {new_car.get("Model_FName")}', YELLOW_CODE)
+    Make_X_Delta = int(old_car['Make_Loc'][0] - new_car['Make_Loc'][0])
+    Make_Y_Delta = int(old_car['Make_Loc'][1] - new_car['Make_Loc'][1])
+    in_dr.hold('w', 1.5) #goto make
+    if Make_X_Delta != 0 or Make_Y_Delta != 0: #not the same make
+        in_dr.tap('enter')
+        in_dr.wait(0.5)
+        in_dr.step('w', 's', Make_Y_Delta)
+        in_dr.wait(0.5)
+        in_dr.step('a', 'd', Make_X_Delta)
+        in_dr.wait(1)
+        in_dr.tap('enter', 1, 0)
+        in_dr.wait(0.5)
+
+    in_dr.tap('s') #goto model
+    in_dr.wait(0.5)
+    if Make_X_Delta == 0 and Make_Y_Delta == 0:
+        Model_X_Delta = new_car['Model_Loc'] - old_car['Model_Loc']
+    else:
+        Model_X_Delta = new_car['Model_Loc']
+    in_dr.step('d', 'a', Model_X_Delta, 0.3)
+
+    if FIRST_RUN:
+        in_dr.tap('s', 4, 0.3) #goto buyout price
+        in_dr.wait(0.5)
+        prices = [
+            1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000,
+            11000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000,
+            110000, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000,
+            1100000, 2000000, 3000000, 4000000, 5000000, 6000000, 7000000, 8000000, 9000000, 10000000,
+            11000000, 20000000, 30000000
+        ]
+        price_index = bisect_right(prices, MAX_BUYOUT_PRICE) - 1
+        if MAX_BUYOUT_PRICE != prices[price_index]:
+            log_and_print('info', f'Closest buyout price is {prices[price_index]}', YELLOW_CODE)
+        log_and_print('info', f'Parameter MAX_BUYOUT_PRICE= {MAX_BUYOUT_PRICE}. Set buyout price to {prices[price_index]}', YELLOW_CODE)            
+        # setting buyout price, we have to tap one more time to set desire price
+        # cause price_index starts from 0, not from 1
+        in_dr.tap('d', price_index+1, 0.3) 
+        FIRST_RUN = False
+    in_dr.tap('s', 3, 0.3) #goto search button
+    log_and_print('info', f'Start sniping {new_car.get("Make_Name")}, {new_car.get("Model_FName")}', GREEN_CODE)
 
 
 def main():
@@ -530,7 +516,7 @@ def main():
     failed_snipe = False
     previous_car_info = EMPTY_CAR_INFO.copy()
     start_time, all_snipe_index = time.time(), []
-    cars = get_cars_from_excel()
+    cars = load_cars_from_excel()
     formatted_cars = '\n'.join(f'  {idx}. {car}' for idx, car in enumerate(cars, 1))
     log_and_print('info', f'Today car list for sniping:\n{formatted_cars}')
     new_car_info = cars[0]
@@ -619,11 +605,10 @@ def main():
                         if found_buyoutsuccess:
                             end_time = time.time()
                             minutes, remaining_seconds = convert_seconds(end_time - start_time)
-                            # log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Success!', GREEN_CODE)
-                            # df.loc[index, 'BUYOUT NUM'] = df['BUYOUT NUM'][index] - 1
-                            # write_excel(df, EXCEL_PATH, EXCEL_SHEET_NAME)
-                            # if df.loc[index, 'BUYOUT NUM'] == 0:
-                            #     car_needs_swap_fl = True
+                            log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Success!', GREEN_CODE)
+                            update_buyout(new_car_info['Excel_index'], new_car_info['Buyout_num'] - 1)
+                            if new_car_info['Buyout_num'] - 1 == 0:
+                                car_needs_swap_fl = True
                             in_dr.tap('enter')
                             in_dr.tap('esc')
                             stop = True
