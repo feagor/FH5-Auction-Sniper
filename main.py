@@ -155,6 +155,7 @@ first_run = True
 start_time = time.time()
 failed_snipe = False
 sct = mss()
+sniping_car = EMPTY_CAR_INFO.copy()
 
 
 def setup_logging(debug_mode: bool):
@@ -504,7 +505,7 @@ def set_auc_search_cond(new_car, old_car):
         Model_X_Delta = new_car['Model_Loc'] - old_car['Model_Loc']
     else:
         Model_X_Delta = new_car['Model_Loc']
-    in_dr.step('d', 'a', Model_X_Delta, 0.3)
+    in_dr.step('d', 'a', Model_X_Delta, 0.15)
 
     if first_run:
         in_dr.tap('s', 4, 0.3) #goto buyout price
@@ -522,7 +523,7 @@ def set_auc_search_cond(new_car, old_car):
         log_and_print('info', f'Parameter MAX_BUYOUT_PRICE= {MAX_BUYOUT_PRICE}. Set buyout price to {prices[price_index]}', YELLOW_CODE)            
         # setting buyout price, we have to tap one more time to set desire price
         # cause price_index starts from 0, not from 1
-        in_dr.tap('d', price_index+1, 0.3) 
+        in_dr.tap('d', price_index+1, 0.15) 
         first_run = False
     in_dr.tap('s', 3, 0.3) #goto search button
     log_and_print('info', f'Start sniping {new_car.get("Make_Name")}, {new_car.get("Model_FName")}', GREEN_CODE)
@@ -531,10 +532,8 @@ def set_auc_search_cond(new_car, old_car):
 
 def main():
     pre_check()
-    car_needs_swap_fl = True
-    
-    prev_car = EMPTY_CAR_INFO.copy()
-    
+    car_needs_swap_fl = True    
+    prev_car = EMPTY_CAR_INFO.copy()    
     cars = load_cars_from_excel()
     formatted_cars = ' '.join(
         f'{idx}. {car["Make_Name"]}, {car["Model_SName"]} - {car["Buyout_num"]} pct\n'
@@ -558,6 +557,7 @@ def main():
         is_search_auc_pressed = press_image(IMAGE_PATH_SA, REGION_AUCTION_MAIN)
         in_dr.wait(0.5)
         wait_if_paused()
+        
         if STOP_EVENT.is_set():
             break
         if not is_search_auc_pressed:
