@@ -91,6 +91,8 @@ GAME_TITLE          = get_config_value('GENERAL', 'GAME_TITLE', 'Forza Horizon 5
 INPUT_DELAY_SCALE   = get_config_value('GENERAL', 'INPUT_DELAY_SCALE', 1.0, float)
 WAIT_RESULT_TIME    = get_config_value('GENERAL', 'WAIT_RESULT_TIME', 1.0, float)
 MAX_BUYOUT_PRICE    = get_config_value('GENERAL', 'MAX_BUYOUT_PRICE', 1000000, int)
+SNIPE_TIME_LIMIT    = get_config_value('GENERAL', 'SNIPE_TIME_LIMIT', 5, int)
+SNIPE_SEC_LIMIT     = SNIPE_TIME_LIMIT * 60
 
 # Constants (colorama codes kept for terminal coloring)
 RED_CODE = '\033[1;31;40m'
@@ -100,18 +102,6 @@ BLUE_CODE = '\033[1;34;40m'
 CYAN_CODE = '\033[1;36;40m'
 COLOR_END_CODE = '\033[0m'
 
-class ColorFormatter(logging.Formatter):
-    """Inject ANSI colors for console handler only."""
-    def format(self, record):
-        message = super().format(record)
-        color = getattr(record, 'color', None)
-        if color:
-            return f"{color}{message}{COLOR_END_CODE}"
-        else:
-            return message
-
-
-MISSED_MATCH_TIMES = 1
 PAUSE_EVENT = threading.Event()
 STOP_EVENT = threading.Event()
 EMPTY_CAR_INFO = {
@@ -140,9 +130,9 @@ IMAGE_PATH_HMMF = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMMF.png')
 IMAGE_PATH_HMBS = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMBS.png')
 
 # Region globals
-REGION_HOME_TABS = (0,0,0,0)
-REGION_AUCTION_MAIN = (0,0,0,0)
-REGION_AUCTION_CAR_DESCR = (0,0,0,0)
+REGION_HOME_TABS           = (0,0,0,0)
+REGION_AUCTION_MAIN        = (0,0,0,0)
+REGION_AUCTION_CAR_DESCR   = (0,0,0,0)
 REGION_AUCTION_ACTION_MENU = (0,0,0,0)
 REGION_AUCTION_RESULT = (0,0,0,0)
 
@@ -152,11 +142,24 @@ WIDTH_RATIO, HEIGHT_RATIO = 1, 1
 
 win_size = {'left': 0, 'top': 0, 'width': 0, 'height': 0}
 first_run = True
+miss_times = 1
 start_time = time.time()
 failed_snipe = False
+total_bought = 0
 sct = mss()
 sniping_car = EMPTY_CAR_INFO.copy()
 
+
+class ColorFormatter(logging.Formatter):
+    """Inject ANSI colors for console handler only."""
+    def format(self, record):
+        message = super().format(record)
+        color = getattr(record, 'color', None)
+        if color:
+            return f"{color}{message}{COLOR_END_CODE}"
+        else:
+            return message
+        
 
 def setup_logging(debug_mode: bool):
     """
@@ -183,7 +186,6 @@ def setup_logging(debug_mode: bool):
     logger.addHandler(ch)
     return logger
 
-
 def log_and_print(level: str, message: str, color: str = None):
     """
     Helper: log to logger while keeping optional coloring for console output only.
@@ -201,6 +203,7 @@ def log_and_print(level: str, message: str, color: str = None):
         log_fn(message, extra=extra)
     else:
         log_fn(message)
+    
 
 
 def wait_if_paused(poll_interval: float = 0.1):
@@ -288,11 +291,11 @@ def press_image(image_path, search_region):
     return False
 
 
-def active_game_window(title=GAME_TITLE):
+def active_game_window():
     try:
-        windows = gw.getWindowsWithTitle(title)
+        windows = gw.getWindowsWithTitle(GAME_TITLE)
         if not windows:
-            logger.exception(f"Window {title} not found")
+            logger.exception(f"Window {GAME_TITLE} not found")
             exit_script()
         game_window = windows[0]
         try:
@@ -384,15 +387,15 @@ def convert_seconds(seconds):
 
 
 def something_wrong():
-    global MISSED_MATCH_TIMES
-    log_and_print('warning', f'Fail to match anything. {MISSED_MATCH_TIMES}-th try to press ESC to see whether it works!', RED_CODE)
+    global miss_times
+    log_and_print('warning', f'Fail to match anything. {miss_times}-th try to press ESC to see whether it works!', RED_CODE)
     active_game_window()
     in_dr.tap('esc')
     in_dr.wait(2)
-    if MISSED_MATCH_TIMES >= 10:
+    if miss_times >= 10:
         log_and_print('error', 'Fail to detect anything, try to restart the script or game!', RED_CODE)
         exit_script()
-    MISSED_MATCH_TIMES += 1
+    miss_times += 1
 
 
 def pre_check():
@@ -463,7 +466,7 @@ def update_buyout(row_index: int, buyout_num: int) -> None:
 
 def set_auc_search_cond(new_car, old_car):
     global first_run, start_time
-    log_and_print('info', 'Car need to be swapped', GREEN_CODE)
+    log_and_print('info', 'Car need to be swaped', GREEN_CODE)
     is_confirm_button_found = get_best_match_img_array(IMAGE_PATH_CF, REGION_AUCTION_MAIN)
     if is_confirm_button_found:
         # if failed_snipe and not FIRST_RUN:
@@ -525,14 +528,37 @@ def set_auc_search_cond(new_car, old_car):
         # cause price_index starts from 0, not from 1
         in_dr.tap('d', price_index+1, 0.15) 
         first_run = False
+    
     in_dr.tap('s', 3, 0.3) #goto search button
     log_and_print('info', f'Start sniping {new_car.get("Make_Name")}, {new_car.get("Model_FName")}', GREEN_CODE)
     start_time = time.time()
+    overlay_controller.update_status(
+        new_car.get('Model_SName'),
+        SNIPE_SEC_LIMIT,
+        new_car.get('Buyout_num'),
+        total_bought,
+    )
 
+def get_next_car_idx(cars, snipe_idx)->int:
+    if not cars:
+        return -1
+    max_len = len(cars)
+    start_idx = (snipe_idx + 1) % max_len
+    idx = start_idx
+
+    while True:
+        if cars[idx]['Buyout_num'] > 0:
+            return idx
+        idx = (idx + 1) % max_len
+        if idx == start_idx:
+            break
+    return -1
 
 def main():
+    global total_bought
     pre_check()
-    car_needs_swap_fl = True    
+    swap_car_fl = True
+    snipe_idx = 0
     prev_car = EMPTY_CAR_INFO.copy()    
     cars = load_cars_from_excel()
     formatted_cars = ' '.join(
@@ -540,26 +566,21 @@ def main():
         for idx, car in enumerate(cars, 1)
     )
     log_and_print('info', f'Today car list for sniping:\n {formatted_cars}')
-    sniping_car = cars[0]
 
     while not STOP_EVENT.is_set():
         wait_if_paused()
         end_time = time.time()
-        if end_time - start_time > 1800:
-            car_needs_swap_fl = True
-            failed_snipe = True
-
+        if end_time - start_time > SNIPE_SEC_LIMIT:
+            swap_car_fl = True
         in_dr.wait(0.35)
         wait_if_paused()
-        if STOP_EVENT.is_set():
-            break
-
         is_search_auc_pressed = press_image(IMAGE_PATH_SA, REGION_AUCTION_MAIN)
         in_dr.wait(0.5)
-        wait_if_paused()
-        
+        wait_if_paused()        
         if STOP_EVENT.is_set():
             break
+        
+        #try to open auction page again, if in home/festival menu
         if not is_search_auc_pressed:
             Home_Page_found = get_best_match_img_array([IMAGE_PATH_HMG, IMAGE_PATH_HMBS, IMAGE_PATH_HMMF], REGION_HOME_TABS)
             if Home_Page_found:
@@ -571,9 +592,12 @@ def main():
                 something_wrong()
             continue
 
-        if car_needs_swap_fl:
-            set_auc_search_cond(sniping_car, prev_car)
-            car_needs_swap_fl = False
+        if swap_car_fl:
+            prev_car = cars[snipe_idx] if not first_run else EMPTY_CAR_INFO.copy()
+            snipe_idx = get_next_car_idx(cars, snipe_idx)
+            snipe_car = cars[snipe_idx]
+            set_auc_search_cond(snipe_car, prev_car)
+            swap_car_fl = False
 
         is_confirm_button_pressed = press_image(IMAGE_PATH_CF, REGION_AUCTION_MAIN)
         in_dr.wait(WAIT_RESULT_TIME)
@@ -628,9 +652,18 @@ def main():
                             end_time = time.time()
                             minutes, remaining_seconds = convert_seconds(end_time - start_time)
                             log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Success!', GREEN_CODE)
-                            update_buyout(sniping_car['Excel_index'], sniping_car['Buyout_num'] - 1)
-                            if sniping_car['Buyout_num'] - 1 == 0:
-                                car_needs_swap_fl = True
+                            new_buyout_count = max(0, snipe_car['Buyout_num'] - 1)
+                            update_buyout(snipe_car['Excel_index'], new_buyout_count)
+                            snipe_car['Buyout_num'] = new_buyout_count
+                            total_bought += 1
+                            remaining_time = max(0.0, SNIPE_SEC_LIMIT - (end_time - start_time))
+                            overlay_controller.update_status(
+                                remaining_seconds=remaining_time,
+                                remaining_buyouts=new_buyout_count,
+                                purchased_count=total_bought,
+                            )
+                            if new_buyout_count == 0:
+                                swap_car_fl = True
                             in_dr.tap('enter')
                             in_dr.tap('esc')
                             stop = True
@@ -645,8 +678,14 @@ def main():
                         break
             elif is_car_found is None and is_auc_res_found and is_confirm_button_pressed:
                 log_and_print('debug', 'Car not found in stock')
-                global MISSED_MATCH_TIMES
-                MISSED_MATCH_TIMES = 1
+                global miss_times
+                miss_times = 1
+                remaining_time = max(0.0, SNIPE_SEC_LIMIT - (end_time - start_time))
+                overlay_controller.update_status(
+                    remaining_seconds=remaining_time,
+                    remaining_buyouts=snipe_car.get('Buyout_num'),
+                    purchased_count=total_bought,
+                )
                 in_dr.tap('esc')
                 in_dr.wait(0.5)
                 continue

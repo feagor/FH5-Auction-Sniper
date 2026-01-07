@@ -1,5 +1,6 @@
 import logging
 import threading
+import time
 from typing import Callable, Mapping, Optional, Tuple
 
 try:
@@ -27,10 +28,34 @@ class OverlayController:
         self.log_callback = log_callback
         self.color_map = dict(color_map) if color_map else {}
         self._thread: Optional[threading.Thread] = None
+        self._info_lock = threading.Lock()
+        self._current_car = '—'
+        self._deadline_ts = 0.0
+        self._remaining_buyouts = 0
+        self._purchased_count = 0
 
     @property
     def available(self) -> bool:
         return tk is not None
+
+    def update_status(
+        self,
+        car_name: Optional[str] = None,
+        remaining_seconds: Optional[float] = None,
+        remaining_buyouts: Optional[int] = None,
+        purchased_count: Optional[int] = None,
+    ) -> None:
+        """Store overlay info from any thread; picked up by UI poller."""
+        with self._info_lock:
+            if car_name is not None:
+                self._current_car = car_name or '—'
+            if remaining_seconds is not None:
+                remaining = max(0.0, float(remaining_seconds))
+                self._deadline_ts = time.time() + remaining
+            if remaining_buyouts is not None:
+                self._remaining_buyouts = max(0, int(remaining_buyouts))
+            if purchased_count is not None:
+                self._purchased_count = max(0, int(purchased_count))
 
     def launch(self, window_bounds: Optional[Tuple[int, int, int, int]] = None) -> Optional[threading.Thread]:
         """Start the overlay in a daemon thread if tkinter is present."""
@@ -85,7 +110,7 @@ class OverlayController:
             y = int(top + height - oh - margin)
             min_x = int(left + margin)
             min_y = int(top + margin)
-            root.geometry(f'+{max(x, min_x)}+{max(y, min_y)}')
+            root.geometry(f'+{max(x, min_x)}+{max(y-100, min_y)}')
 
         place_overlay(window_bounds)
 
@@ -128,6 +153,19 @@ class OverlayController:
         status_lbl = tk.Label(frame, textvariable=status_var, fg='#66ff99', bg='#111111', font=('Consolas', 10))
         status_lbl.pack(anchor='w', pady=(2, 8))
 
+        car_var = tk.StringVar(value='Car: —')
+        timer_var = tk.StringVar(value='Time left: 30:00')
+        stock_var = tk.StringVar(value='Remaining: 0')
+        bought_var = tk.StringVar(value='Bought: 0')
+        car_lbl = tk.Label(frame, textvariable=car_var, fg='white', bg='#111111', font=('Consolas', 10))
+        timer_lbl = tk.Label(frame, textvariable=timer_var, fg='#66ccff', bg='#111111', font=('Consolas', 10))
+        stock_lbl = tk.Label(frame, textvariable=stock_var, fg='#ffcc66', bg='#111111', font=('Consolas', 10))
+        bought_lbl = tk.Label(frame, textvariable=bought_var, fg='#66ffcc', bg='#111111', font=('Consolas', 10))
+        car_lbl.pack(anchor='w')
+        timer_lbl.pack(anchor='w')
+        stock_lbl.pack(anchor='w')
+        bought_lbl.pack(anchor='w', pady=(0, 8))
+
         btn_style = {
             'bg': '#1e1e1e',
             'fg': 'white',
@@ -159,6 +197,23 @@ class OverlayController:
             widget.bind('<Button-1>', start_move)
             widget.bind('<B1-Motion>', do_move)
 
+        def refresh_overlay_info():
+            with self._info_lock:
+                car_name = self._current_car
+                deadline = self._deadline_ts
+                remaining_buyouts = self._remaining_buyouts
+                purchased = self._purchased_count
+            remaining = 0
+            if deadline:
+                remaining = max(0, int(deadline - time.time()))
+            minutes = remaining // 60
+            seconds = remaining % 60
+            car_var.set(f'Car: {car_name or "—"}')
+            timer_var.set(f'Time left: {minutes:02d}:{seconds:02d}')
+            stock_var.set(f'Remaining: {remaining_buyouts}')
+            bought_var.set(f'Bought: {purchased}')
+            root.after(1000, refresh_overlay_info)
+
         def monitor_stop_flag():
             if self.stop_event.is_set():
                 try:
@@ -169,5 +224,6 @@ class OverlayController:
                 root.after(200, monitor_stop_flag)
 
         root.bind('<Escape>', lambda _event: request_stop())
+        root.after(200, refresh_overlay_info)
         root.after(200, monitor_stop_flag)
         root.mainloop()
