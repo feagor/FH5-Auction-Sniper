@@ -91,8 +91,8 @@ GAME_TITLE          = get_config_value('GENERAL', 'GAME_TITLE', 'Forza Horizon 5
 INPUT_DELAY_SCALE   = get_config_value('GENERAL', 'INPUT_DELAY_SCALE', 1.0, float)
 WAIT_RESULT_TIME    = get_config_value('GENERAL', 'WAIT_RESULT_TIME', 1.0, float)
 MAX_BUYOUT_PRICE    = get_config_value('GENERAL', 'MAX_BUYOUT_PRICE', 1000000, int)
-SNIPE_TIME_LIMIT    = get_config_value('GENERAL', 'SNIPE_TIME_LIMIT', 5, int)
-SNIPE_SEC_LIMIT     = SNIPE_TIME_LIMIT * 60
+SNIPE_MIN_LIMIT     = get_config_value('GENERAL', 'SNIPE_MIN_LIMIT', 30, int)
+SNIPE_SEC_LIMIT     = SNIPE_MIN_LIMIT * 60
 
 # Constants (colorama codes kept for terminal coloring)
 RED_CODE = '\033[1;31;40m'
@@ -104,15 +104,7 @@ COLOR_END_CODE = '\033[0m'
 
 PAUSE_EVENT = threading.Event()
 STOP_EVENT = threading.Event()
-EMPTY_CAR_INFO = {
-    'Excel_index': -1,
-    'Make_Name': '',
-    'Make_Loc': [0,0],
-    'Model_FName': '',
-    'Model_SName': '',
-    'Model_Loc': 0,
-    'Buyout_num': 0
-}
+
 # Paths
 EXCEL_PATH = os.path.join(CURRENT_DIR, EXCEL_FILENAME)
 # Templates paths
@@ -134,11 +126,20 @@ REGION_HOME_TABS           = (0,0,0,0)
 REGION_AUCTION_MAIN        = (0,0,0,0)
 REGION_AUCTION_CAR_DESCR   = (0,0,0,0)
 REGION_AUCTION_ACTION_MENU = (0,0,0,0)
-REGION_AUCTION_RESULT = (0,0,0,0)
+REGION_AUCTION_RESULT      = (0,0,0,0)
 
 # Screenshot matching parameters
 THRESHOLD = 0.8
 WIDTH_RATIO, HEIGHT_RATIO = 1, 1
+EMPTY_CAR_INFO = {
+    'Excel_index': -1,
+    'Make_Name': '',
+    'Make_Loc': [0,0],
+    'Model_FName': '',
+    'Model_SName': '',
+    'Model_Loc': 0,
+    'Buyout_num': 0
+}
 
 win_size = {'left': 0, 'top': 0, 'width': 0, 'height': 0}
 first_run = True
@@ -468,19 +469,15 @@ def set_auc_search_cond(new_car, old_car):
     global first_run, start_time
     log_and_print('info', 'Car need to be swaped', GREEN_CODE)
     is_confirm_button_found = get_best_match_img_array(IMAGE_PATH_CF, REGION_AUCTION_MAIN)
+    
+    if STOP_EVENT.is_set():
+        return
+    
     if is_confirm_button_found:
-        # if failed_snipe and not FIRST_RUN:
-        #     end_time = time.time()
-        #     minutes, remaining_seconds = convert_seconds(end_time - start_time)
-        #     log_and_print('info', f'[{minutes}:{remaining_seconds}] TIME OUT, Switching to Next Auction Sniper!', YELLOW_CODE)
-        # failed_snipe = False
-        
         # reset cursor
         active_game_window()
         in_dr.mouse_move(win_size['left'] + 10, win_size['top'] + 40)
-        in_dr.burst(3)
-        if STOP_EVENT.is_set():
-            return
+        in_dr.burst(3)        
     else:
         something_wrong()  
     
@@ -492,7 +489,8 @@ def set_auc_search_cond(new_car, old_car):
     Make_X_Delta = int(old_car['Make_Loc'][0] - new_car['Make_Loc'][0])
     Make_Y_Delta = int(old_car['Make_Loc'][1] - new_car['Make_Loc'][1])
     in_dr.hold('w', 1.5) #goto make
-    if Make_X_Delta != 0 or Make_Y_Delta != 0: #not the same make
+    #not the same make
+    if Make_X_Delta != 0 or Make_Y_Delta != 0: 
         in_dr.tap('enter')
         in_dr.wait(0.5)
         in_dr.step('w', 's', Make_Y_Delta)
@@ -501,15 +499,22 @@ def set_auc_search_cond(new_car, old_car):
         in_dr.wait(1)
         in_dr.tap('enter', 1, 0)
         in_dr.wait(0.5)
-
+    
+    if STOP_EVENT.is_set():
+        return
+    
     in_dr.tap('s') #goto model
     in_dr.wait(0.5)
     if Make_X_Delta == 0 and Make_Y_Delta == 0:
         Model_X_Delta = new_car['Model_Loc'] - old_car['Model_Loc']
     else:
         Model_X_Delta = new_car['Model_Loc']
-    in_dr.step('d', 'a', Model_X_Delta, 0.15)
-
+    log_and_print('info', f'New car model loc - {new_car['Model_Loc']}, Prev car model loc - {old_car['Model_Loc']}, Delta move - {Model_X_Delta}', CYAN_CODE)
+    in_dr.step('d', 'a', Model_X_Delta, 0.2)
+    
+    if STOP_EVENT.is_set():
+        return
+    
     if first_run:
         in_dr.tap('s', 4, 0.3) #goto buyout price
         in_dr.wait(0.5)
@@ -529,7 +534,7 @@ def set_auc_search_cond(new_car, old_car):
         in_dr.tap('d', price_index+1, 0.15) 
         first_run = False
     
-    in_dr.tap('s', 3, 0.3) #goto search button
+    in_dr.tap('s', 5, 0.3) #goto search button
     log_and_print('info', f'Start sniping {new_car.get("Make_Name")}, {new_car.get("Model_FName")}', GREEN_CODE)
     start_time = time.time()
     overlay_controller.update_status(
@@ -594,11 +599,13 @@ def main():
 
         if swap_car_fl:
             prev_car = cars[snipe_idx] if not first_run else EMPTY_CAR_INFO.copy()
-            snipe_idx = get_next_car_idx(cars, snipe_idx)
+            snipe_idx = get_next_car_idx(cars, snipe_idx) if not first_run else 0
             snipe_car = cars[snipe_idx]
             set_auc_search_cond(snipe_car, prev_car)
             swap_car_fl = False
-
+            if STOP_EVENT.is_set():
+                break
+        
         is_confirm_button_pressed = press_image(IMAGE_PATH_CF, REGION_AUCTION_MAIN)
         in_dr.wait(WAIT_RESULT_TIME)
         wait_if_paused()
