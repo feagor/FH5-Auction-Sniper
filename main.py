@@ -96,7 +96,6 @@ WAIT_RESULT_TIME    = get_config_value('GENERAL', 'WAIT_RESULT_TIME', 1.0, float
 MAX_BUYOUT_PRICE    = get_config_value('GENERAL', 'MAX_BUYOUT_PRICE', 1000000, int)
 SNIPE_MIN_LIMIT     = get_config_value('GENERAL', 'SNIPE_MIN_LIMIT', 30, int)
 SNIPE_SEC_LIMIT     = SNIPE_MIN_LIMIT * 60
-current_snipe_seconds_left = SNIPE_SEC_LIMIT
 
 # Constants (colorama codes kept for terminal coloring)
 RED_CODE = '\033[1;31;40m'
@@ -150,10 +149,38 @@ win_size = {'left': 0, 'top': 0, 'width': 0, 'height': 0}
 first_run = True
 miss_times = 1
 start_time = time.time()
-failed_snipe = False
-Bought_by_session = 0
+bought_in_session = 0
 sct = mss()
 sniping_car = EMPTY_CAR_INFO.copy()
+snipe_secs_left = SNIPE_SEC_LIMIT
+
+def exit_script():
+    log_and_print('error', 'Script exits in 2 seconds!', RED_CODE)
+    in_dr.wait(2)
+    log_and_print('error', 'Script stops!', RED_CODE)
+    STOP_EVENT.set()
+    sys.exit(0)
+
+
+def something_wrong():
+    global miss_times
+    #try to open auction page again, if locates in home/festival menu
+    Home_Page_found = get_best_match_img_array([IMAGE_PATH_HMG, IMAGE_PATH_HMBS, IMAGE_PATH_HMMF], REGION_HOME_TABS)
+    if Home_Page_found:
+        in_dr.hold('a', 5)
+        in_dr.tap('w')
+        in_dr.tap('enter')
+        in_dr.wait(1)
+    else:
+        log_and_print('warning', f'Fail to match anything. {miss_times}-th try to press ESC to see whether it works!', RED_CODE)
+        active_game_window()
+        in_dr.tap('esc')
+        in_dr.wait(2)
+        miss_times += 1
+    
+    if miss_times >= 10:
+        log_and_print('error', 'Fail to detect anything, try to restart the script or game!', RED_CODE)
+        exit_script()
 
 
 class ColorFormatter(logging.Formatter):
@@ -210,12 +237,6 @@ def log_and_print(level: str, message: str, color: str = None):
         log_fn(message, extra=extra)
     else:
         log_fn(message)
-    
-
-def wait_if_paused(poll_interval: float = 0.1):
-    """Block the automation loop while the pause overlay button is active."""
-    while PAUSE_EVENT.is_set() and not STOP_EVENT.is_set():
-        in_dr.wait(poll_interval)
 
 
 def capture_screen(region=None):
@@ -378,53 +399,30 @@ def measure_game_window():
         exit_script()
 
 
-def exit_script():
-    log_and_print('error', 'Script exits in 2 seconds!', RED_CODE)
-    in_dr.wait(2)
-    log_and_print('error', 'Script stops!', RED_CODE)
-    STOP_EVENT.set()
-    sys.exit(0)
-
-
 def convert_seconds(seconds):
     minutes = int(seconds // 60)
     remaining_seconds = int(seconds % 60)
     return minutes, remaining_seconds
 
 
+def wait_if_paused(poll_interval: float = 0.1):
+    """Block the automation loop while the pause overlay button is active."""
+    while PAUSE_EVENT.is_set() and not STOP_EVENT.is_set():
+        in_dr.wait(poll_interval)
+
+
 def refresh_snipe_time_left():
     """Sync the script's countdown with the overlay-managed timer."""
-    global current_snipe_seconds_left
+    global snipe_secs_left
     controller = globals().get('overlay_controller')
     if controller:
         remaining = controller.get_remaining_seconds()
         if remaining is not None:
-            current_snipe_seconds_left = remaining
+            snipe_secs_left = remaining
             return remaining
     elapsed = max(0, int(SNIPE_SEC_LIMIT - (time.time() - start_time)))
-    current_snipe_seconds_left = elapsed
+    snipe_secs_left = elapsed
     return elapsed
-
-
-def something_wrong():
-    global miss_times
-    #try to open auction page again, if locates in home/festival menu
-    Home_Page_found = get_best_match_img_array([IMAGE_PATH_HMG, IMAGE_PATH_HMBS, IMAGE_PATH_HMMF], REGION_HOME_TABS)
-    if Home_Page_found:
-        in_dr.hold('a', 5)
-        in_dr.tap('w')
-        in_dr.tap('enter')
-        in_dr.wait(1)
-    else:
-        log_and_print('warning', f'Fail to match anything. {miss_times}-th try to press ESC to see whether it works!', RED_CODE)
-        active_game_window()
-        in_dr.tap('esc')
-        in_dr.wait(2)
-        miss_times += 1
-    
-    if miss_times >= 10:
-        log_and_print('error', 'Fail to detect anything, try to restart the script or game!', RED_CODE)
-        exit_script()
 
 
 def pre_check():
@@ -456,8 +454,36 @@ def pre_check():
 
 
 def load_cars_from_excel():
-    df = pd.read_excel(EXCEL_PATH, EXCEL_SHEET_NAME)
+    try:
+        df = pd.read_excel(EXCEL_PATH, EXCEL_SHEET_NAME)
+    except FileNotFoundError:
+        log_and_print('error', f'Excel file not found at {EXCEL_PATH}', RED_CODE)
+        exit_script()
+    except ValueError as exc:
+        log_and_print('error', f'Failed to load sheet "{EXCEL_SHEET_NAME}": {exc}', RED_CODE)
+        exit_script()
+    except Exception as exc:
+        log_and_print('error', f'Failed to read Excel workbook: {exc}', RED_CODE)
+        exit_script()
+
+    required_columns = {
+        'CAR MAKE',
+        'CAR MODEL(Full Name)',
+        'CAR MODEL(Short Name)',
+        'MODEL LOC',
+        'BUYOUT NUM',
+        LOCAL_MAKE_COL,
+    }
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    if missing_columns:
+        log_and_print('error', f'Missing required columns in Excel sheet: {", ".join(missing_columns)}', RED_CODE)
+        exit_script()
+
     valid_rows = df[(df['BUYOUT NUM'] > 0) & (df['MODEL LOC'] != -1)]
+    if valid_rows.empty:
+        log_and_print('error', 'No cars found for sniping (check BUYOUT NUM and MODEL LOC).', RED_CODE)
+        exit_script()
+
     cars = []
     for idx, row in valid_rows.iterrows():        
         car_info = EMPTY_CAR_INFO.copy()
@@ -471,32 +497,32 @@ def load_cars_from_excel():
         car_info['Buyout_num'] = int(row['BUYOUT NUM'] or 0)
         car_info['Bought_num'] = 0
         cars.append(car_info)
+
+    if not cars:
+        log_and_print('error', 'Car list is empty after processing the workbook.', RED_CODE)
+        exit_script()
+
     return cars
 
 
-def update_buyout(row_index: int, buyout_num: int) -> None:
-    try:
-        wb = load_workbook(EXCEL_PATH)
-        ws = wb[EXCEL_SHEET_NAME]
-        target_row = row_index + 2  # +1 for header, +1 because Excel rows are 1-based
-        buyout_col = None
-        for cell in ws[1]:
-            if str(cell.value).strip().upper() == 'BUYOUT NUM':
-                buyout_col = cell.column
-                break
-        if buyout_col is None:
-            log_and_print('error', 'Column BUYOUT NUM not found in Excel sheet', RED_CODE)
-            return
-        ws.cell(row=target_row, column=buyout_col, value=int(buyout_num))
-        wb.save(EXCEL_PATH)
-        log_and_print('debug', f'Updated BUYOUT NUM at row {row_index} to {buyout_num}', GREEN_CODE)
-    except Exception as exc:
-        log_and_print('error', f'Failed to update BUYOUT NUM: {exc}', RED_CODE)
+def get_next_car_idx(cars, snipe_idx)->int:
+    if not cars:
+        return -1
+    max_len = len(cars)
+    start_idx = (snipe_idx + 1) % max_len
+    idx = start_idx
+
+    while True:
+        if cars[idx]['Buyout_num'] > 0:
+            return idx
+        idx = (idx + 1) % max_len
+        if idx == start_idx:
+            break
+    return -1
 
 
 def set_auc_search_cond(new_car, old_car):
     global first_run, start_time
-    log_and_print('info', 'Car need to be swaped', GREEN_CODE)
     is_confirm_button_found = get_best_match_img_array(IMAGE_PATH_CF, REGION_AUCTION_MAIN)
     
     if STOP_EVENT.is_set():
@@ -575,29 +601,16 @@ def set_auc_search_cond(new_car, old_car):
     refresh_snipe_time_left()
 
 
-def get_next_car_idx(cars, snipe_idx)->int:
-    if not cars:
-        return -1
-    max_len = len(cars)
-    start_idx = (snipe_idx + 1) % max_len
-    idx = start_idx
-
-    while True:
-        if cars[idx]['Buyout_num'] > 0:
-            return idx
-        idx = (idx + 1) % max_len
-        if idx == start_idx:
-            break
-    return -1
-
-
 def buyout(snipe_car):
+    global bought_in_session
     """Attempt to buy out the current auction and return the updated car dict."""
     log_and_print('debug', 'Car found in stock')
     stop = False
     found_PB = found_VS = found_AO = None
     if STOP_EVENT.is_set():
-        exit_script()   
+        exit_script()
+    
+    # Press buyout button and wait result       
     while not stop:
         wait_if_paused()
         in_dr.wait(0.2)
@@ -639,7 +652,7 @@ def buyout(snipe_car):
                 update_buyout(snipe_car['Excel_index'], new_buyout_count)
                 snipe_car['Buyout_num'] = new_buyout_count
                 snipe_car['Bought_num'] += 1
-                total_bought += 1
+                bought_in_session += 1
                 
                 refresh_snipe_time_left()
                 overlay_controller.update_status(
@@ -647,6 +660,7 @@ def buyout(snipe_car):
                     purchased_count   = snipe_car['Bought_num'],
                 )                   
                 in_dr.tap('enter')
+                in_dr.wait(0.5)
                 in_dr.tap('esc')
                 stop = True
             else:
@@ -659,8 +673,28 @@ def buyout(snipe_car):
     return snipe_car            
 
 
+def update_buyout(row_index: int, buyout_num: int) -> None:
+    try:
+        wb = load_workbook(EXCEL_PATH)
+        ws = wb[EXCEL_SHEET_NAME]
+        target_row = row_index + 2  # +1 for header, +1 because Excel rows are 1-based
+        buyout_col = None
+        for cell in ws[1]:
+            if str(cell.value).strip().upper() == 'BUYOUT NUM':
+                buyout_col = cell.column
+                break
+        if buyout_col is None:
+            log_and_print('error', 'Column BUYOUT NUM not found in Excel sheet', RED_CODE)
+            return
+        ws.cell(row=target_row, column=buyout_col, value=int(buyout_num))
+        wb.save(EXCEL_PATH)
+        log_and_print('debug', f'Updated BUYOUT NUM at row {row_index} to {buyout_num}', GREEN_CODE)
+    except Exception as exc:
+        log_and_print('error', f'Failed to update BUYOUT NUM: {exc}', RED_CODE)
+
+
 def main():
-    global Bought_by_session
+    global bought_in_session
     pre_check()
     swap_car_fl = True
     snipe_idx = 0
@@ -676,15 +710,16 @@ def main():
     while not STOP_EVENT.is_set():
         wait_if_paused()
         refresh_snipe_time_left()
-        if current_snipe_seconds_left <= 0:
+        if snipe_secs_left <= 0 and not first_run:
             swap_car_fl = True
+            log_and_print('info', f'Snipe for {snipe_car["Model_SName"]} timed out. Switching to next car.', YELLOW_CODE)
         in_dr.wait(0.35)
         wait_if_paused()
         is_search_auc_pressed = press_image(IMAGE_PATH_SA, REGION_AUCTION_MAIN)
         in_dr.wait(0.5)
         wait_if_paused()        
         if STOP_EVENT.is_set():
-            break
+            something_wrong()
         
         if not is_search_auc_pressed:
             something_wrong()
@@ -693,6 +728,9 @@ def main():
         if swap_car_fl:
             prev_car = cars[snipe_idx] if not first_run else EMPTY_CAR_INFO.copy()            
             snipe_idx = get_next_car_idx(cars, snipe_idx) if not first_run else 0
+            if snipe_idx == -1:
+                log_and_print('info', 'All cars have been sniped. Exiting.', GREEN_CODE)
+                break
             snipe_car = cars[snipe_idx]
             set_auc_search_cond(snipe_car, prev_car)
             swap_car_fl = False
@@ -714,19 +752,20 @@ def main():
                 cars[snipe_idx] = snipe_car
                 if snipe_car['Buyout_num'] == 0:
                     swap_car_fl = True
+                    log_and_print('info', f'Snipe for {snipe_car["Model_SName"]} Finished successfully. Switching to next car.', YELLOW_CODE)
+
             elif is_car_found is None and is_auc_res_found and is_confirm_button_pressed:
                 log_and_print('debug', 'Car not found in stock')
                 global miss_times
                 miss_times = 1
                 refresh_snipe_time_left()
-                overlay_controller.update_status(
-                    remaining_buyouts=snipe_car.get('Buyout_num'),
-                    purchased_count=Bought_by_session,
-                )
                 in_dr.tap('esc')
                 in_dr.wait(0.5)
                 continue
-            pass
+            overlay_controller.update_status(
+                remaining_buyouts=snipe_car['Buyout_num'],
+                purchased_count=snipe_car['Bought_num'],
+            )
         else:
             log_and_print('debug', 'Auction results not found :(')
             something_wrong()
