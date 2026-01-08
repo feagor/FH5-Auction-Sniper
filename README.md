@@ -11,7 +11,6 @@ Forza Horizon 5 auction sniping automation that combines OpenCV template matchin
 - **Tk overlay with pause/resume** – the overlay shows current target, remaining rotation time, remaining buyouts, and purchased count. Pause freezes the countdown, resume re-focuses FH5 automatically so global hotkeys don’t leak into the overlay.
 - **Robust window management** – `pre_check` validates monitor DPI via `get_monitors.py`, focuses the FH5 window, resizes it to 1616×939, and optionally takes debug screenshots for every template match.
 - **Multi-locale templates** – drop pixel-perfect screenshots under `images/ENG` or `images/RUS`, then point `LOCAL` and `LOCAL_MAKE_COL` at the right workbook columns.
-- **Single-command release builds** – `scripts/build_release.ps1` runs PyInstaller, bundles `FH5Sniper.exe`, copies `images/`, `settings.ini`, the Excel workbook, and wipes the generated `.spec` file so the repo stays tidy.
 
 ## Performance Preview (2MIN Demo)
 
@@ -55,18 +54,10 @@ The default `settings.ini` bundled with this repo is tuned to the Russian locale
 
 Adjust `settings.ini` if your environment differs (e.g., switch locale, rename the workbook, or run the game through a different launcher title).
 
-## System Requirements
+- ## System Requirements
 
-- Windows 10/11 host with FH5 running at 1920×1080, 100 % scale. The script resizes the window to 1616×939 for consistent capture regions.
+- Windows 10/11 host with FH5 configured. The automation has been tested on FHD (1920×1080), 2K, and 4K panels thanks to the enforced resize to 1616×939 during `pre_check`.
 - Python < 3.13 with the packages in `requirements.txt` **plus** `pywin32` and `wmi` (needed by `get_monitors.py`).
-- For release builds you can use the pre-generated `.exe` or create your own via PyInstaller (see below).
-- GPU overlays (HDR, Auto HDR, etc.) should remain off so screenshots stay pixel-identical to the supplied templates.
-
-![system requirement](archive/system_setting.png)
-
-![video setting](archive/video_setting.png)
-
-![Graphic setting](archive/graphics_setting.png)
    
 ## Running the Sniper
 
@@ -76,7 +67,6 @@ Adjust `settings.ini` if your environment differs (e.g., switch locale, rename t
 git clone https://github.com/feagor/FH5-Auction-Sniper.git
 cd FH5-Auction-Sniper
 pip install -r requirements.txt
-pip install pywin32 wmi  # required by get_monitors.py
 python main.py
 ```
 
@@ -95,7 +85,6 @@ python main.py
    - `DEBUG_MODE=true` to enable region captures and verbose logs.
 2. Edit the Excel workbook:
    - Set `BUYOUT NUM` to the number of copies you still need. The script decrements and persists the value using `update_buyout`.
-   - Update `MAKE LOC (...)` with new `(x,y)` coordinates if you captured the grid again using `get_mouse_coords.py`.
    - Ensure `MODEL LOC` matches the horizontal index inside the grid row.
 3. Prepare locale assets:
    - Keep template names identical (`SA.png`, `CF.png`, etc.).
@@ -107,27 +96,10 @@ python main.py
 - **Stop** – exits gracefully by setting `STOP_EVENT`, closing the overlay, and stopping the automation loop.
 - **Status fields** – car name, time left in the current rotation, remaining buyouts for that car, and purchased count for the whole session update from any thread via `overlay_controller.update_status`.
 
-## Building a Release Executable
-
-Use the provided PowerShell script (also wired into the VS Code `build-release` task):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/build_release.ps1
-```
-
-What it does:
-
-1. Runs PyInstaller with `--onefile` output placed directly into `release/`.
-2. Copies `settings.ini`, `FH5_all_cars_info_v4.xlsx`, and the `images/`, `debug/`, `archive/` folders next to the exe.
-3. Cleans the intermediate `build/` cache and removes `FH5Sniper.spec` so the repo stays clean.
-
-Pass `-ReleaseDir MyDrop` or `-SkipBuild` to reuse an existing exe while only refreshing resources.
-
 ## Operating Tips
 
 1. Keep FH5 focused on the Search Auction screen. `active_game_window()` will re-focus periodically, but switching away mid-loop may cause template misses.
 2. Use the Tk overlay to pause instead of Alt+Tabbing; the timer stays accurate and resume logic will click back into the game automatically.
 3. When templates stop matching, enable `DEBUG_MODE` to capture fresh screenshots, then update the Excel coordinates or the image packs.
-4. Always verify monitor DPI with `get_monitors.py` if you change displays. The automation assumes 100 % scaling.
 
 ![Auction House](archive/auction_house.png)
