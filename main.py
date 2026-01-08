@@ -167,6 +167,7 @@ def something_wrong():
     #try to open auction page again, if locates in home/festival menu
     Home_Page_found = get_best_match_img_array([IMAGE_PATH_HMG, IMAGE_PATH_HMBS, IMAGE_PATH_HMMF], REGION_HOME_TABS)
     if Home_Page_found:
+        log_and_print('warning', f'Now located in Home/Festival menu. Try to go to Auction page.', RED_CODE)
         in_dr.hold('a', 5)
         in_dr.tap('w')
         in_dr.tap('enter')
@@ -399,12 +400,6 @@ def measure_game_window():
         exit_script()
 
 
-def convert_seconds(seconds):
-    minutes = int(seconds // 60)
-    remaining_seconds = int(seconds % 60)
-    return minutes, remaining_seconds
-
-
 def wait_if_paused(poll_interval: float = 0.1):
     """Block the automation loop while the pause overlay button is active."""
     while PAUSE_EVENT.is_set() and not STOP_EVENT.is_set():
@@ -602,9 +597,13 @@ def set_auc_search_cond(new_car, old_car):
 
 
 def buyout(snipe_car):
+    def format_elapsed_time():
+        seconds = time.time() - start_time
+        return f'[{int(seconds // 60)}:{int(seconds % 60):02d}]'
     global bought_in_session
+    
     """Attempt to buy out the current auction and return the updated car dict."""
-    log_and_print('debug', 'Car found in stock')
+    log_and_print('info', 'Car found in stock, trying to buyout...', GREEN_CODE)
     stop = False
     found_PB = found_VS = found_AO = None
     if STOP_EVENT.is_set():
@@ -637,17 +636,14 @@ def buyout(snipe_car):
             wait_if_paused()
             found_buyoutfail = get_best_match_img_array(IMAGE_PATH_BF, REGION_AUCTION_ACTION_MENU)
             found_buyoutsuccess = get_best_match_img_array(IMAGE_PATH_BS, REGION_AUCTION_ACTION_MENU)
-            if found_buyoutfail:
-                end_time = time.time()
-                minutes, remaining_seconds = convert_seconds(end_time - start_time)
-                log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Failed!', RED_CODE)
+            if found_buyoutfail:                
+                log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Failed!', RED_CODE)
                 in_dr.tap('enter')
+                in_dr.wait(0.3)
                 in_dr.tap('esc')
                 stop = True
             if found_buyoutsuccess:
-                end_time = time.time()
-                minutes, remaining_seconds = convert_seconds(end_time - start_time)
-                log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Success!', GREEN_CODE)
+                log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Success!', GREEN_CODE)
                 new_buyout_count = max(0, snipe_car['Buyout_num'] - 1)
                 update_buyout(snipe_car['Excel_index'], new_buyout_count)
                 snipe_car['Buyout_num'] = new_buyout_count
@@ -660,16 +656,15 @@ def buyout(snipe_car):
                     purchased_count   = snipe_car['Bought_num'],
                 )                   
                 in_dr.tap('enter')
-                in_dr.wait(0.5)
+                in_dr.wait(0.3)
                 in_dr.tap('esc')
                 stop = True
             else:
-                end_time = time.time()
-                minutes, remaining_seconds = convert_seconds(end_time - start_time)
-                log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Missed!', YELLOW_CODE)
+                log_and_print('info', f'[{format_elapsed_time()}]  BUYOUT Missed!', YELLOW_CODE)
                 in_dr.tap('esc')
-                in_dr.wait(0.1)
             in_dr.wait(3)
+    in_dr.wait(0.5)
+    in_dr.tap('esc')
     return snipe_car            
 
 
@@ -729,7 +724,7 @@ def main():
             prev_car = cars[snipe_idx] if not first_run else EMPTY_CAR_INFO.copy()            
             snipe_idx = get_next_car_idx(cars, snipe_idx) if not first_run else 0
             if snipe_idx == -1:
-                log_and_print('info', 'All cars have been sniped. Exiting.', GREEN_CODE)
+                log_and_print('info', f'All cars ({bought_in_session} pct) have been succesfully bought. Exit script.', GREEN_CODE)
                 break
             snipe_car = cars[snipe_idx]
             set_auc_search_cond(snipe_car, prev_car)
