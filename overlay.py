@@ -21,18 +21,21 @@ class OverlayController:
         logger: logging.Logger,
         log_callback: Optional[LogCallback] = None,
         color_map: Optional[Mapping[str, str]] = None,
+        refocus_callback: Optional[Callable[[], None]] = None,
     ) -> None:
         self.pause_event = pause_event
         self.stop_event = stop_event
         self.logger = logger
         self.log_callback = log_callback
         self.color_map = dict(color_map) if color_map else {}
+        self._refocus_callback = refocus_callback
         self._thread: Optional[threading.Thread] = None
         self._info_lock = threading.Lock()
         self._current_car = '—'
-        self._deadline_ts = 0.0
         self._remaining_buyouts = 0
         self._purchased_count = 0
+        self._remaining_seconds: float = 0.0
+        self._last_tick: float = time.time()
 
     @property
     def available(self) -> bool:
@@ -50,12 +53,33 @@ class OverlayController:
             if car_name is not None:
                 self._current_car = car_name or '—'
             if remaining_seconds is not None:
-                remaining = max(0.0, float(remaining_seconds))
-                self._deadline_ts = time.time() + remaining
+                self._remaining_seconds = max(0.0, float(remaining_seconds))
+                self._last_tick = time.time()
             if remaining_buyouts is not None:
                 self._remaining_buyouts = max(0, int(remaining_buyouts))
             if purchased_count is not None:
                 self._purchased_count = max(0, int(purchased_count))
+
+    def get_remaining_seconds(self) -> int:
+        """Expose the current countdown so the main loop can stay in sync."""
+        with self._info_lock:
+            remaining = self._update_remaining_locked(time.time())
+            return int(remaining)
+
+    def _update_remaining_locked(self, now: float) -> float:
+        remaining = self._remaining_seconds
+        if remaining <= 0:
+            self._remaining_seconds = 0.0
+            self._last_tick = now
+            return 0.0
+        if self.pause_event.is_set():
+            return remaining
+        elapsed = max(0.0, now - self._last_tick)
+        if elapsed > 0:
+            remaining = max(0.0, remaining - elapsed)
+            self._remaining_seconds = remaining
+            self._last_tick = now
+        return remaining
 
     def launch(self, window_bounds: Optional[Tuple[int, int, int, int]] = None) -> Optional[threading.Thread]:
         """Start the overlay in a daemon thread if tkinter is present."""
@@ -117,9 +141,12 @@ class OverlayController:
         def toggle_pause():
             if self.pause_event.is_set():
                 self.pause_event.clear()
+                with self._info_lock:
+                    self._last_tick = time.time()
                 status_var.set('Running')
                 pause_btn.configure(text='Pause')
                 self._log('info', 'Automation resumed from overlay', self.color_map.get('resume'))
+                self._refocus_if_needed()
             else:
                 self.pause_event.set()
                 status_var.set('Paused')
@@ -135,15 +162,6 @@ class OverlayController:
                 root.destroy()
             except tk.TclError:
                 pass
-
-        def start_move(event):
-            root._drag_start_x = event.x  # type: ignore[attr-defined]
-            root._drag_start_y = event.y  # type: ignore[attr-defined]
-
-        def do_move(event):
-            x = root.winfo_pointerx() - getattr(root, '_drag_start_x', 0)
-            y = root.winfo_pointery() - getattr(root, '_drag_start_y', 0)
-            root.geometry(f'+{x}+{y}')
 
         frame = tk.Frame(root, bg='#111111', padx=12, pady=10)
         frame.pack()
@@ -192,22 +210,17 @@ class OverlayController:
             font=('Segoe UI', 10, 'bold'),
         )
         stop_btn.pack()
-
-        for widget in (frame, title_lbl, status_lbl):
-            widget.bind('<Button-1>', start_move)
-            widget.bind('<B1-Motion>', do_move)
-
+       
         def refresh_overlay_info():
+            now = time.time()
             with self._info_lock:
                 car_name = self._current_car
-                deadline = self._deadline_ts
                 remaining_buyouts = self._remaining_buyouts
                 purchased = self._purchased_count
-            remaining = 0
-            if deadline:
-                remaining = max(0, int(deadline - time.time()))
-            minutes = remaining // 60
-            seconds = remaining % 60
+                remaining = self._update_remaining_locked(now)
+            remaining_secs = int(round(remaining))
+            minutes = remaining_secs // 60
+            seconds = remaining_secs % 60
             car_var.set(f'Car: {car_name or "—"}')
             timer_var.set(f'Time left: {minutes:02d}:{seconds:02d}')
             stock_var.set(f'Remaining: {remaining_buyouts}')
@@ -223,7 +236,37 @@ class OverlayController:
             else:
                 root.after(200, monitor_stop_flag)
 
+        pause_state = self.pause_event.is_set()
+        if pause_state:
+            status_var.set('Paused')
+            pause_btn.configure(text='Resume')
+
+        def monitor_pause_flag():
+            nonlocal pause_state
+            is_paused = self.pause_event.is_set()
+            if is_paused != pause_state:
+                pause_state = is_paused
+                if is_paused:
+                    status_var.set('Paused')
+                    pause_btn.configure(text='Resume')
+                else:
+                    status_var.set('Running')
+                    pause_btn.configure(text='Pause')
+                    with self._info_lock:
+                        self._last_tick = time.time()
+                    self._refocus_if_needed()
+            root.after(200, monitor_pause_flag)
+
         root.bind('<Escape>', lambda _event: request_stop())
         root.after(200, refresh_overlay_info)
         root.after(200, monitor_stop_flag)
+        root.after(200, monitor_pause_flag)
         root.mainloop()
+
+    def _refocus_if_needed(self) -> None:
+        if not self._refocus_callback:
+            return
+        try:
+            self._refocus_callback()
+        except Exception:
+            self.logger.exception('Failed to refocus target window after resume')

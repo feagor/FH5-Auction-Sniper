@@ -93,6 +93,7 @@ WAIT_RESULT_TIME    = get_config_value('GENERAL', 'WAIT_RESULT_TIME', 1.0, float
 MAX_BUYOUT_PRICE    = get_config_value('GENERAL', 'MAX_BUYOUT_PRICE', 1000000, int)
 SNIPE_MIN_LIMIT     = get_config_value('GENERAL', 'SNIPE_MIN_LIMIT', 30, int)
 SNIPE_SEC_LIMIT     = SNIPE_MIN_LIMIT * 60
+current_snipe_seconds_left = SNIPE_SEC_LIMIT
 
 # Constants (colorama codes kept for terminal coloring)
 RED_CODE = '\033[1;31;40m'
@@ -138,7 +139,8 @@ EMPTY_CAR_INFO = {
     'Model_FName': '',
     'Model_SName': '',
     'Model_Loc': 0,
-    'Buyout_num': 0
+    'Buyout_num': 0,
+    'Bought_num': 0
 }
 
 win_size = {'left': 0, 'top': 0, 'width': 0, 'height': 0}
@@ -146,7 +148,7 @@ first_run = True
 miss_times = 1
 start_time = time.time()
 failed_snipe = False
-total_bought = 0
+Bought_by_session = 0
 sct = mss()
 sniping_car = EMPTY_CAR_INFO.copy()
 
@@ -187,6 +189,7 @@ def setup_logging(debug_mode: bool):
     logger.addHandler(ch)
     return logger
 
+
 def log_and_print(level: str, message: str, color: str = None):
     """
     Helper: log to logger while keeping optional coloring for console output only.
@@ -205,7 +208,6 @@ def log_and_print(level: str, message: str, color: str = None):
     else:
         log_fn(message)
     
-
 
 def wait_if_paused(poll_interval: float = 0.1):
     """Block the automation loop while the pause overlay button is active."""
@@ -387,9 +389,23 @@ def convert_seconds(seconds):
     return minutes, remaining_seconds
 
 
+def refresh_snipe_time_left():
+    """Sync the script's countdown with the overlay-managed timer."""
+    global current_snipe_seconds_left
+    controller = globals().get('overlay_controller')
+    if controller:
+        remaining = controller.get_remaining_seconds()
+        if remaining is not None:
+            current_snipe_seconds_left = remaining
+            return remaining
+    elapsed = max(0, int(SNIPE_SEC_LIMIT - (time.time() - start_time)))
+    current_snipe_seconds_left = elapsed
+    return elapsed
+
+
 def something_wrong():
     global miss_times
-    #try to open auction page again, if in home/festival menu
+    #try to open auction page again, if locates in home/festival menu
     Home_Page_found = get_best_match_img_array([IMAGE_PATH_HMG, IMAGE_PATH_HMBS, IMAGE_PATH_HMMF], REGION_HOME_TABS)
     if Home_Page_found:
         in_dr.hold('a', 5)
@@ -450,6 +466,7 @@ def load_cars_from_excel():
         car_info['Model_SName'] = row['CAR MODEL(Short Name)']
         car_info['Model_Loc'] = row['MODEL LOC']
         car_info['Buyout_num'] = int(row['BUYOUT NUM'] or 0)
+        car_info['Bought_num'] = 0
         cars.append(car_info)
     return cars
 
@@ -550,8 +567,9 @@ def set_auc_search_cond(new_car, old_car):
         new_car.get('Model_SName'),
         SNIPE_SEC_LIMIT,
         new_car.get('Buyout_num'),
-        total_bought,
+        new_car.get('Bought_num'),
     )
+    refresh_snipe_time_left()
 
 
 def get_next_car_idx(cars, snipe_idx)->int:
@@ -571,12 +589,12 @@ def get_next_car_idx(cars, snipe_idx)->int:
 
 
 def buyout(snipe_car):
+    """Attempt to buy out the current auction and return the updated car dict."""
     log_and_print('debug', 'Car found in stock')
     stop = False
     found_PB = found_VS = found_AO = None
     if STOP_EVENT.is_set():
-        stop = True
-        return      
+        exit_script()   
     while not stop:
         wait_if_paused()
         in_dr.wait(0.2)
@@ -617,12 +635,13 @@ def buyout(snipe_car):
                 new_buyout_count = max(0, snipe_car['Buyout_num'] - 1)
                 update_buyout(snipe_car['Excel_index'], new_buyout_count)
                 snipe_car['Buyout_num'] = new_buyout_count
+                snipe_car['Bought_num'] += 1
                 total_bought += 1
-                remaining_time = max(0.0, SNIPE_SEC_LIMIT - (end_time - start_time))
+                
+                refresh_snipe_time_left()
                 overlay_controller.update_status(
-                    remaining_seconds=remaining_time,
-                    remaining_buyouts=new_buyout_count,
-                    purchased_count=total_bought,
+                    remaining_buyouts = new_buyout_count,
+                    purchased_count   = snipe_car['Bought_num'],
                 )                   
                 in_dr.tap('enter')
                 in_dr.tap('esc')
@@ -634,10 +653,10 @@ def buyout(snipe_car):
                 in_dr.tap('esc')
                 in_dr.wait(0.1)
             in_dr.wait(3)
-            
+    return snipe_car            
 
 def main():
-    global total_bought
+    global Bought_by_session
     pre_check()
     swap_car_fl = True
     snipe_idx = 0
@@ -652,8 +671,8 @@ def main():
 
     while not STOP_EVENT.is_set():
         wait_if_paused()
-        end_time = time.time()
-        if end_time - start_time > SNIPE_SEC_LIMIT:
+        refresh_snipe_time_left()
+        if current_snipe_seconds_left <= 0:
             swap_car_fl = True
         in_dr.wait(0.35)
         wait_if_paused()
@@ -687,7 +706,7 @@ def main():
             logger.debug('Auction results found')
             is_car_found = get_best_match_img_array(IMAGE_PATH_AT, REGION_AUCTION_CAR_DESCR)
             if is_car_found:
-                buyout(snipe_car)
+                snipe_car = buyout(snipe_car)
                 cars[snipe_idx] = snipe_car
                 if snipe_car['Buyout_num'] == 0:
                     swap_car_fl = True
@@ -695,11 +714,10 @@ def main():
                 log_and_print('debug', 'Car not found in stock')
                 global miss_times
                 miss_times = 1
-                remaining_time = max(0.0, SNIPE_SEC_LIMIT - (end_time - start_time))
+                refresh_snipe_time_left()
                 overlay_controller.update_status(
-                    remaining_seconds=remaining_time,
                     remaining_buyouts=snipe_car.get('Buyout_num'),
-                    purchased_count=total_bought,
+                    purchased_count=Bought_by_session,
                 )
                 in_dr.tap('esc')
                 in_dr.wait(0.5)
@@ -723,6 +741,7 @@ overlay_controller = OverlayController(
     logger,
     log_callback=log_and_print,
     color_map={'resume': GREEN_CODE, 'pause': YELLOW_CODE, 'stop': RED_CODE},
+    refocus_callback=active_game_window,
 )
 in_dr = InputDriver(pydi, pydi, INPUT_DELAY_SCALE)
 colorama.init(wrap=True)
