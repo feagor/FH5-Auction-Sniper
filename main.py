@@ -154,6 +154,7 @@ sct = mss()
 sniping_car = EMPTY_CAR_INFO.copy()
 snipe_secs_left = SNIPE_SEC_LIMIT
 
+
 def exit_script():
     log_and_print('error', 'Script exits in 2 seconds!', RED_CODE)
     in_dr.wait(2)
@@ -164,11 +165,21 @@ def exit_script():
 
 def something_wrong():
     global miss_times
+    HOME_TAB_META = {
+        0: ('Buy & Sell',1.5),
+        1: ('Garage',3.5),
+        2: ('My Festival',5)
+    }
     #try to open auction page again, if locates in home/festival menu
-    Home_Page_found = get_best_match_img_array([IMAGE_PATH_HMG, IMAGE_PATH_HMBS, IMAGE_PATH_HMMF], REGION_HOME_TABS)
-    if Home_Page_found:
-        log_and_print('warning', f'Now located in Home/Festival menu. Try to go to Auction page.', RED_CODE)
-        in_dr.hold('a', 5)
+    home_page_result = get_best_match_img_array(
+        [IMAGE_PATH_HMBS, IMAGE_PATH_HMG, IMAGE_PATH_HMMF], 
+        REGION_HOME_TABS
+    )
+    if home_page_result:
+        _, page_idx = home_page_result
+        page_name, hold_seconds = HOME_TAB_META.get(page_idx, (f'index {page_idx}', 5))
+        log_and_print('warning', f'Now located in Home/Festival menu ({page_name}). Try to open Auction House.', RED_CODE)
+        in_dr.hold('a', hold_seconds)
         in_dr.tap('w')
         in_dr.tap('enter')
         in_dr.wait(1)
@@ -577,8 +588,8 @@ def set_auc_search_cond(new_car, old_car):
         ]
         price_idx = bisect_right(prices, MAX_BUYOUT_PRICE) - 1
         if MAX_BUYOUT_PRICE != prices[price_idx]:
-            log_and_print('info', f'Closest buyout price is {prices[price_idx]}', YELLOW_CODE)
-        log_and_print('info', f'Parameter MAX_BUYOUT_PRICE= {MAX_BUYOUT_PRICE}. Set buyout price to {prices[price_idx]}', YELLOW_CODE)            
+            log_and_print('info', f'Closest to parameter MAX_BUYOUT_PRICE = {MAX_BUYOUT_PRICE} game price is {prices[price_idx]}', YELLOW_CODE)
+        log_and_print('info', f'Set buyout price to {prices[price_idx]}', YELLOW_CODE)            
         # setting buyout price, we have to tap one more time to set desire price
         # cause price_index starts from 0, not from 1
         in_dr.tap('d', price_idx+1, 0.15) 
@@ -604,13 +615,14 @@ def buyout(snipe_car):
     
     """Attempt to buy out the current auction and return the updated car dict."""
     log_and_print('info', 'Car found in stock, trying to buyout...', GREEN_CODE)
-    stop = False
+    buyout_press_fl = False
+    iter = 0
     found_PB = found_VS = found_AO = None
     if STOP_EVENT.is_set():
         exit_script()
     
     # Press buyout button and wait result       
-    while not stop:
+    while not buyout_press_fl or iter<=10:
         wait_if_paused()
         in_dr.wait(0.2)
         in_dr.tap('y')
@@ -619,20 +631,24 @@ def buyout(snipe_car):
         found_VS = get_best_match_img_array(IMAGE_PATH_VS, REGION_AUCTION_ACTION_MENU)
         found_AO = get_best_match_img_array(IMAGE_PATH_AO, REGION_AUCTION_ACTION_MENU)
         if found_PB or found_VS or found_AO:
-            stop = True
             in_dr.wait(0.3)
+            # we are at active "place bid", need go down to buyout
             if found_PB:
                 in_dr.tap('s')
                 in_dr.tap('enter')
                 in_dr.wait(0.5)
                 in_dr.tap('enter')
                 in_dr.wait(5)
-                stop = False
+                buyout_press_fl = True
+            # we are at active View seller, this means someone bought before us
+            elif found_VS:
+                break
         else:
-            stop = True 
-            something_wrong()
-        ##Get buyout result
-        while not stop:
+            iter += 1
+    
+    ## buyout button succesfully pressed, try to get buyout result
+    if buyout_press_fl:
+        while not buyout_press_fl:
             wait_if_paused()
             found_buyoutfail = get_best_match_img_array(IMAGE_PATH_BF, REGION_AUCTION_ACTION_MENU)
             found_buyoutsuccess = get_best_match_img_array(IMAGE_PATH_BS, REGION_AUCTION_ACTION_MENU)
@@ -641,7 +657,7 @@ def buyout(snipe_car):
                 in_dr.tap('enter')
                 in_dr.wait(0.3)
                 in_dr.tap('esc')
-                stop = True
+                buyout_press_fl = True
             if found_buyoutsuccess:
                 log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Success!', GREEN_CODE)
                 new_buyout_count = max(0, snipe_car['Buyout_num'] - 1)
@@ -658,7 +674,7 @@ def buyout(snipe_car):
                 in_dr.tap('enter')
                 in_dr.wait(0.3)
                 in_dr.tap('esc')
-                stop = True
+                buyout_press_fl = True
             else:
                 log_and_print('info', f'[{format_elapsed_time()}]  BUYOUT Missed!', YELLOW_CODE)
                 in_dr.tap('esc')
