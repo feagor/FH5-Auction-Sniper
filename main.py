@@ -62,7 +62,10 @@ class InputDriver:
             if gap:
                 self.wait(gap)
 
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+if getattr(sys, 'frozen', False):
+    CURRENT_DIR = os.path.dirname(sys.executable)
+else:
+    CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Read configuration from settings.ini
 config = configparser.ConfigParser()

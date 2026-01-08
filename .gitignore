@@ -1,8 +1,10 @@
+.gitignore
+debug/
+build/
+release/
+__pycache__/
+.github/
 fh5_sniper.log
-__pycache__/overlay.cpython-312.pyc
 FH5_all_cars_info_v4.xlsx
 FH5_all_cars_info_v4.1.xlsx
-debug/
 get_mouse_coords.py
-.github/copilot-instructions.md
-.gitignore
