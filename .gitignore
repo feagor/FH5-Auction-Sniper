@@ -2,7 +2,9 @@
 debug/
 build/
 release/
+scripts
 __pycache__/
+.vscode/
 .github/
 fh5_sniper.log
 FH5_all_cars_info_v4.xlsx

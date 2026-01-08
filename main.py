@@ -86,7 +86,7 @@ def get_config_value(section, key, default=None, value_type=str):
 
 # Get config data with defaults
 LOCAL               = get_config_value('GENERAL', 'LOCAL', 'ENG')
-EXCEL_FILENAME      = get_config_value('GENERAL', 'EXCEL_FILENAME', 'FH5_all_cars_info_v3.xlsx')
+EXCEL_FILENAME      = get_config_value('GENERAL', 'EXCEL_FILENAME', 'FH5_all_cars_info_v4.xlsx')
 EXCEL_SHEET_NAME    = get_config_value('GENERAL', 'EXCEL_SHEET_NAME', 'all_cars_info')
 LOCAL_MAKE_COL      = get_config_value('GENERAL', 'LOCAL_MAKE_COL', 'MAKE LOC (ENG)')
 DEBUG_MODE          = get_config_value('GENERAL', 'DEBUG_MODE', False, bool)
@@ -657,6 +657,7 @@ def buyout(snipe_car):
                 in_dr.wait(0.1)
             in_dr.wait(3)
     return snipe_car            
+
 
 def main():
     global Bought_by_session
