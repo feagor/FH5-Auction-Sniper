@@ -389,14 +389,23 @@ def convert_seconds(seconds):
 
 def something_wrong():
     global miss_times
-    log_and_print('warning', f'Fail to match anything. {miss_times}-th try to press ESC to see whether it works!', RED_CODE)
-    active_game_window()
-    in_dr.tap('esc')
-    in_dr.wait(2)
+    #try to open auction page again, if in home/festival menu
+    Home_Page_found = get_best_match_img_array([IMAGE_PATH_HMG, IMAGE_PATH_HMBS, IMAGE_PATH_HMMF], REGION_HOME_TABS)
+    if Home_Page_found:
+        in_dr.hold('a', 5)
+        in_dr.tap('w')
+        in_dr.tap('enter')
+        in_dr.wait(1)
+    else:
+        log_and_print('warning', f'Fail to match anything. {miss_times}-th try to press ESC to see whether it works!', RED_CODE)
+        active_game_window()
+        in_dr.tap('esc')
+        in_dr.wait(2)
+        miss_times += 1
+    
     if miss_times >= 10:
         log_and_print('error', 'Fail to detect anything, try to restart the script or game!', RED_CODE)
         exit_script()
-    miss_times += 1
 
 
 def pre_check():
@@ -509,7 +518,7 @@ def set_auc_search_cond(new_car, old_car):
         Model_X_Delta = new_car['Model_Loc'] - old_car['Model_Loc']
     else:
         Model_X_Delta = new_car['Model_Loc']
-    log_and_print('info', f'New car model loc - {new_car['Model_Loc']}, Prev car model loc - {old_car['Model_Loc']}, Delta move - {Model_X_Delta}', CYAN_CODE)
+    log_and_print('debug', f'New car model loc - {new_car['Model_Loc']}, Prev car model loc - {old_car['Model_Loc']}, Delta move - {Model_X_Delta}', CYAN_CODE)
     in_dr.step('d', 'a', Model_X_Delta, 0.2)
     
     if STOP_EVENT.is_set():
@@ -525,13 +534,13 @@ def set_auc_search_cond(new_car, old_car):
             1100000, 2000000, 3000000, 4000000, 5000000, 6000000, 7000000, 8000000, 9000000, 10000000,
             11000000, 20000000, 30000000
         ]
-        price_index = bisect_right(prices, MAX_BUYOUT_PRICE) - 1
-        if MAX_BUYOUT_PRICE != prices[price_index]:
-            log_and_print('info', f'Closest buyout price is {prices[price_index]}', YELLOW_CODE)
-        log_and_print('info', f'Parameter MAX_BUYOUT_PRICE= {MAX_BUYOUT_PRICE}. Set buyout price to {prices[price_index]}', YELLOW_CODE)            
+        price_idx = bisect_right(prices, MAX_BUYOUT_PRICE) - 1
+        if MAX_BUYOUT_PRICE != prices[price_idx]:
+            log_and_print('info', f'Closest buyout price is {prices[price_idx]}', YELLOW_CODE)
+        log_and_print('info', f'Parameter MAX_BUYOUT_PRICE= {MAX_BUYOUT_PRICE}. Set buyout price to {prices[price_idx]}', YELLOW_CODE)            
         # setting buyout price, we have to tap one more time to set desire price
         # cause price_index starts from 0, not from 1
-        in_dr.tap('d', price_index+1, 0.15) 
+        in_dr.tap('d', price_idx+1, 0.15) 
         first_run = False
     
     in_dr.tap('s', 5, 0.3) #goto search button
@@ -543,6 +552,7 @@ def set_auc_search_cond(new_car, old_car):
         new_car.get('Buyout_num'),
         total_bought,
     )
+
 
 def get_next_car_idx(cars, snipe_idx)->int:
     if not cars:
@@ -559,18 +569,86 @@ def get_next_car_idx(cars, snipe_idx)->int:
             break
     return -1
 
+
+def buyout(snipe_car):
+    log_and_print('debug', 'Car found in stock')
+    stop = False
+    found_PB = found_VS = found_AO = None
+    if STOP_EVENT.is_set():
+        stop = True
+        return      
+    while not stop:
+        wait_if_paused()
+        in_dr.wait(0.2)
+        in_dr.tap('y')
+        in_dr.wait(0.2)
+        found_PB = get_best_match_img_array(IMAGE_PATH_PB, REGION_AUCTION_ACTION_MENU)
+        found_VS = get_best_match_img_array(IMAGE_PATH_VS, REGION_AUCTION_ACTION_MENU)
+        found_AO = get_best_match_img_array(IMAGE_PATH_AO, REGION_AUCTION_ACTION_MENU)
+        if found_PB or found_VS or found_AO:
+            stop = True
+            in_dr.wait(0.3)
+            if found_PB:
+                in_dr.tap('s')
+                in_dr.tap('enter')
+                in_dr.wait(0.5)
+                in_dr.tap('enter')
+                in_dr.wait(5)
+                stop = False
+        else:
+            stop = True 
+            something_wrong()
+        ##Get buyout result
+        while not stop:
+            wait_if_paused()
+            found_buyoutfail = get_best_match_img_array(IMAGE_PATH_BF, REGION_AUCTION_ACTION_MENU)
+            found_buyoutsuccess = get_best_match_img_array(IMAGE_PATH_BS, REGION_AUCTION_ACTION_MENU)
+            if found_buyoutfail:
+                end_time = time.time()
+                minutes, remaining_seconds = convert_seconds(end_time - start_time)
+                log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Failed!', RED_CODE)
+                in_dr.tap('enter')
+                in_dr.tap('esc')
+                stop = True
+            if found_buyoutsuccess:
+                end_time = time.time()
+                minutes, remaining_seconds = convert_seconds(end_time - start_time)
+                log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Success!', GREEN_CODE)
+                new_buyout_count = max(0, snipe_car['Buyout_num'] - 1)
+                update_buyout(snipe_car['Excel_index'], new_buyout_count)
+                snipe_car['Buyout_num'] = new_buyout_count
+                total_bought += 1
+                remaining_time = max(0.0, SNIPE_SEC_LIMIT - (end_time - start_time))
+                overlay_controller.update_status(
+                    remaining_seconds=remaining_time,
+                    remaining_buyouts=new_buyout_count,
+                    purchased_count=total_bought,
+                )                   
+                in_dr.tap('enter')
+                in_dr.tap('esc')
+                stop = True
+            else:
+                end_time = time.time()
+                minutes, remaining_seconds = convert_seconds(end_time - start_time)
+                log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Missed!', YELLOW_CODE)
+                in_dr.tap('esc')
+                in_dr.wait(0.1)
+            in_dr.wait(3)
+            
+
 def main():
     global total_bought
     pre_check()
     swap_car_fl = True
     snipe_idx = 0
-    prev_car = EMPTY_CAR_INFO.copy()    
+    prev_car = EMPTY_CAR_INFO.copy()
     cars = load_cars_from_excel()
+    snipe_car = cars[0] if cars else EMPTY_CAR_INFO.copy()
     formatted_cars = ' '.join(
         f'{idx}. {car["Make_Name"]}, {car["Model_SName"]} - {car["Buyout_num"]} pct\n'
         for idx, car in enumerate(cars, 1)
     )
-    log_and_print('info', f'Today car list for sniping:\n {formatted_cars}')
+    log_and_print('info', f'Today car list for sniping:\n {formatted_cars}', CYAN_CODE)
 
     while not STOP_EVENT.is_set():
         wait_if_paused()
@@ -585,20 +663,12 @@ def main():
         if STOP_EVENT.is_set():
             break
         
-        #try to open auction page again, if in home/festival menu
         if not is_search_auc_pressed:
-            Home_Page_found = get_best_match_img_array([IMAGE_PATH_HMG, IMAGE_PATH_HMBS, IMAGE_PATH_HMMF], REGION_HOME_TABS)
-            if Home_Page_found:
-                in_dr.hold('a', 5)
-                in_dr.tap('w')
-                in_dr.tap('enter')
-                in_dr.wait(1)
-            else:
-                something_wrong()
+            something_wrong()
             continue
 
         if swap_car_fl:
-            prev_car = cars[snipe_idx] if not first_run else EMPTY_CAR_INFO.copy()
+            prev_car = cars[snipe_idx] if not first_run else EMPTY_CAR_INFO.copy()            
             snipe_idx = get_next_car_idx(cars, snipe_idx) if not first_run else 0
             snipe_car = cars[snipe_idx]
             set_auc_search_cond(snipe_car, prev_car)
@@ -611,78 +681,16 @@ def main():
         wait_if_paused()
         if STOP_EVENT.is_set():
             break
+        
         is_auc_res_found = get_best_match_img_array(IMAGE_PATH_NB, REGION_AUCTION_RESULT)
         if is_auc_res_found:
             logger.debug('Auction results found')
             is_car_found = get_best_match_img_array(IMAGE_PATH_AT, REGION_AUCTION_CAR_DESCR)
             if is_car_found:
-                log_and_print('debug', 'Car found in stock')
-                stop = False
-                found_PB = found_VS = found_AO = None
-                while not stop:
-                    if STOP_EVENT.is_set():
-                        stop = True
-                        break
-                    wait_if_paused()
-                    in_dr.wait(0.1)
-                    in_dr.tap('y')
-                    found_PB = get_best_match_img_array(IMAGE_PATH_PB, REGION_AUCTION_ACTION_MENU)
-                    found_VS = get_best_match_img_array(IMAGE_PATH_VS, REGION_AUCTION_ACTION_MENU)
-                    found_AO = get_best_match_img_array(IMAGE_PATH_AO, REGION_AUCTION_ACTION_MENU)
-                    if found_PB or found_VS or found_AO:
-                        stop = True
-                    in_dr.wait(0.3)
-
-                if found_PB:
-                    in_dr.tap('s')
-                    in_dr.tap('enter')
-                    in_dr.wait(2)
-                    in_dr.tap('enter')
-                    in_dr.wait(5)
-                    stop = False
-
-                    while not stop:
-                        if STOP_EVENT.is_set():
-                            stop = True
-                            break
-                        wait_if_paused()
-                        found_buyoutfail = get_best_match_img_array(IMAGE_PATH_BF, REGION_AUCTION_ACTION_MENU)
-                        found_buyoutsuccess = get_best_match_img_array(IMAGE_PATH_BS, REGION_AUCTION_ACTION_MENU)
-                        if found_buyoutfail:
-                            end_time = time.time()
-                            minutes, remaining_seconds = convert_seconds(end_time - start_time)
-                            log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Failed!', RED_CODE)
-                            in_dr.tap('enter')
-                            in_dr.tap('esc')
-                            stop = True
-                        if found_buyoutsuccess:
-                            end_time = time.time()
-                            minutes, remaining_seconds = convert_seconds(end_time - start_time)
-                            log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Success!', GREEN_CODE)
-                            new_buyout_count = max(0, snipe_car['Buyout_num'] - 1)
-                            update_buyout(snipe_car['Excel_index'], new_buyout_count)
-                            snipe_car['Buyout_num'] = new_buyout_count
-                            total_bought += 1
-                            remaining_time = max(0.0, SNIPE_SEC_LIMIT - (end_time - start_time))
-                            overlay_controller.update_status(
-                                remaining_seconds=remaining_time,
-                                remaining_buyouts=new_buyout_count,
-                                purchased_count=total_bought,
-                            )
-                            if new_buyout_count == 0:
-                                swap_car_fl = True
-                            in_dr.tap('enter')
-                            in_dr.tap('esc')
-                            stop = True
-                        in_dr.wait(3)
-                else:
-                    end_time = time.time()
-                    minutes, remaining_seconds = convert_seconds(end_time - start_time)
-                    log_and_print('info', f'[{minutes}:{remaining_seconds}] BUYOUT Missed!', YELLOW_CODE)
-                    in_dr.tap('esc')
-                    in_dr.wait(0.1)
-                    if STOP_EVENT.is_set():
-                        break
+                buyout(snipe_car)
+                cars[snipe_idx] = snipe_car
+                if snipe_car['Buyout_num'] == 0:
+                    swap_car_fl = True
             elif is_car_found is None and is_auc_res_found and is_confirm_button_pressed:
                 log_and_print('debug', 'Car not found in stock')
                 global miss_times
@@ -696,9 +704,9 @@ def main():
                 in_dr.tap('esc')
                 in_dr.wait(0.5)
                 continue
+            pass
         else:
             log_and_print('debug', 'Auction results not found :(')
-            Home_Page_found = get_best_match_img_array([IMAGE_PATH_HMG, IMAGE_PATH_HMBS, IMAGE_PATH_HMMF], REGION_HOME_TABS)
             something_wrong()
             continue
 
