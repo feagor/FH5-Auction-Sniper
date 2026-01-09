@@ -607,15 +607,14 @@ def set_auc_search_cond(new_car, old_car):
     refresh_snipe_time_left()
 
 
-def buyout(snipe_car):
+def buyout(snipe_car) -> bool:
     def format_elapsed_time():
         seconds = time.time() - start_time
         return f'[{int(seconds // 60)}:{int(seconds % 60):02d}]'
     global bought_in_session
-    
-    """Attempt to buy out the current auction and return the updated car dict."""
+    result = False
     log_and_print('info', 'Car found in stock, trying to buyout...', GREEN_CODE)
-    buyout_press_fl = False
+    buyout_press_fl, buyout_res_fl = False, False
     iter = 0
     found_PB = found_VS = found_AO = None
     if STOP_EVENT.is_set():
@@ -643,22 +642,23 @@ def buyout(snipe_car):
             # we are at active View seller, this means someone bought before us
             elif found_VS:
                 break
-        else:
-            iter += 1
-    
+        iter += 1
+   
     ## buyout button succesfully pressed, try to get buyout result
     if buyout_press_fl:
-        while not buyout_press_fl:
+        iter = 0
+        while not buyout_res_fl or iter<=10:
             wait_if_paused()
-            found_buyoutfail = get_best_match_img_array(IMAGE_PATH_BF, REGION_AUCTION_ACTION_MENU)
-            found_buyoutsuccess = get_best_match_img_array(IMAGE_PATH_BS, REGION_AUCTION_ACTION_MENU)
-            if found_buyoutfail:                
+            iter += 1
+            found_buyout_failed = get_best_match_img_array(IMAGE_PATH_BF, REGION_AUCTION_ACTION_MENU)
+            found_buyout_success = get_best_match_img_array(IMAGE_PATH_BS, REGION_AUCTION_ACTION_MENU)
+            if found_buyout_failed:                
                 log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Failed!', RED_CODE)
                 in_dr.tap('enter')
                 in_dr.wait(0.3)
                 in_dr.tap('esc')
-                buyout_press_fl = True
-            if found_buyoutsuccess:
+                buyout_res_fl = True
+            if found_buyout_success:
                 log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Success!', GREEN_CODE)
                 new_buyout_count = max(0, snipe_car['Buyout_num'] - 1)
                 update_buyout(snipe_car['Excel_index'], new_buyout_count)
@@ -675,13 +675,14 @@ def buyout(snipe_car):
                 in_dr.wait(0.3)
                 in_dr.tap('esc')
                 buyout_press_fl = True
+                result = True
             else:
                 log_and_print('info', f'[{format_elapsed_time()}]  BUYOUT Missed!', YELLOW_CODE)
                 in_dr.tap('esc')
             in_dr.wait(3)
     in_dr.wait(0.5)
     in_dr.tap('esc')
-    return snipe_car            
+    return result
 
 
 def update_buyout(row_index: int, buyout_num: int) -> None:
@@ -759,9 +760,9 @@ def main():
             logger.debug('Auction results found')
             is_car_found = get_best_match_img_array(IMAGE_PATH_AT, REGION_AUCTION_CAR_DESCR)
             if is_car_found:
-                snipe_car = buyout(snipe_car)
+                buyout_succeeded = buyout(snipe_car)
                 cars[snipe_idx] = snipe_car
-                if snipe_car['Buyout_num'] == 0:
+                if buyout_succeeded and snipe_car['Buyout_num'] == 0:
                     swap_car_fl = True
                     log_and_print('info', f'Snipe for {snipe_car["Model_SName"]} Finished successfully. Switching to next car.', YELLOW_CODE)
 
