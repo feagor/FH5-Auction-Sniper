@@ -10,22 +10,19 @@ Forza Horizon 5 auction sniping automation that combines OpenCV template matchin
 - **Smart search conditioning** – `set_auc_search_cond` resets the auction filters, navigates straight to the stored make/model coordinates, snaps the buyout slider to the closest supported ladder value, and keeps the overlay timer in sync.
 - **Tk overlay with pause/resume** – the overlay shows the active target, rotation window, remaining copies, and both per-car and session hit counters. Pause freezes the countdown, resume re-focuses FH5 automatically so global hotkeys don’t leak into the overlay.
 - **Robust window management** – `pre_check` validates monitor DPI via `get_monitors.py`, focuses the FH5 window, resizes it to 1616×939, and optionally takes debug screenshots for every template match.
-- **Multi-locale templates** – drop pixel-perfect screenshots under `images/ENG` or `images/RUS`, then point `LOCAL` and `LOCAL_MAKE_COL` at the right workbook columns.
+- **Multi-locale templates** – drop pixel-perfect screenshots under `images/ENG` or `images/RUS`, then point `LOCAL` and `LOCAL_MAKE_COL` at the right workbook columns. English (ENG) and Russian (RUS) packs ship out of the box; community PRs for additional locales are welcome.
 
-## Performance Preview (2MIN Demo)
-
-In this demo, we let the script snipe these four cars `AUDI RS`, `AUDI R1`, `MEGANE R26 R`, `MINI COUNTRYMAN`.
-
-![preview](archive/demo.gif)
+## Performance Preview ( Demo)
+> **TODO:** Embed the  demo clip or GIF once it’s rendered.
 
 
 ## Result Preview
-![Result](archive/script_result.PNG)
-![ingame result](archive/game_success.png)
+> **TODO:** Drop final screenshot(s) that show the in-game purchase confirmation and summary table.
 
 ## Capability Overview
 
 - **Multi-car rotation** – timer-based rotation (`SNIPE_MIN_LIMIT`) plus per-car quotas (`BUYOUT NUM`) prevent stalling on a single target.
+- **Opt-in shuffling** – set `SHUFFLE_CAR_LIST=true` in `settings.ini` to randomize the Excel queue each session.
 - **Automated buyout workflow** – template-based navigation handles Search Auctions, Confirm/Finding, Auction actions (`PB.png`, `VS.png`, `AO.png`), and buyout result banners with auto-dismiss + Excel persistence.
 - **Pausing without drift** – the overlay freezes the countdown when paused and resumes from the same second, keeping the console loop and UI perfectly aligned.
 - **Debug-friendly** – enable `DEBUG_MODE=true` to capture every template region in `debug/screen/` and write a detailed rotating log via `fh5_sniper.log`.
@@ -68,14 +65,17 @@ Adjust `settings.ini` if your environment differs (e.g., switch locale, rename t
 git clone https://github.com/feagor/FH5-Auction-Sniper.git
 cd FH5-Auction-Sniper
 pip install -r requirements.txt
+pip install pywin32 wmi
 python main.py
 ```
 
+Run the commands from the project root so `settings.ini`, the Excel workbook, and the `images/` folder stay discoverable via `CURRENT_DIR`. Launch FH5 and park it on the Auction Search screen before executing `python main.py`; the script will resize and focus the window automatically.
+
 ### Packaged release
 
-- Download the latest ZIP from the [releases](https://github.com/feagor/FH5-Auction-Sniper/releases) page or build it locally (next section).
-- Unpack next to `settings.ini`, `FH5_all_cars_info_v4.xlsx`, and the `images/` folder. The executable locates everything relative to its own directory (`CURRENT_DIR`).
-- Start FH5, navigate to Auction Search, ensure the focus stays on the game window, then launch `FH5Sniper.exe`.
+- Download the latest ZIP from the [releases](https://github.com/feagor/FH5-Auction-Sniper/releases) page and unpack it.
+- The executable locates everything relative to its own directory (`CURRENT_DIR`).
+- Start FH5, navigate to Auction Search, ensure the focus stays on the game window, then launch `FH5Sniper.exe` from the unzipped `release/` folder. The EXE bundles Python and the dependencies so you can run from Windows Explorer without touching a terminal.
 
 ## Configuration Checklist
 
@@ -87,20 +87,15 @@ python main.py
 2. Edit the Excel workbook:
    - Set `BUYOUT NUM` to the number of copies you still need. The script decrements and persists the value using `update_buyout`.
    - Ensure `MODEL LOC` matches the horizontal index inside the grid row.
-3. Prepare locale assets:
-   - Keep template names identical (`SA.png`, `CF.png`, etc.).
-   - Place new assets in `images/<LOCAL>/`.
 
 ## Overlay & Controls
 
 - **Pause/Resume** – click the overlay button or use the pause hotkey (if configured); the countdown freezes instantly, and resuming re-focuses FH5 so global ESC presses don’t hit the overlay.
 - **Stop** – exits gracefully by setting `STOP_EVENT`, closing the overlay, and stopping the automation loop.
-- **Status fields** – car name, time left in the current rotation, remaining buyouts for that car, per-car purchased count, and the session-wide total update from any thread via `overlay_controller.update_status`.
+- **Status fields** – car name, time left in the current rotation, remaining and purchased buyouts for that car and the total buyouts in session
 
 ## Operating Tips
 
-1. Keep FH5 focused on the Search Auction screen. `active_game_window()` will re-focus periodically, but switching away mid-loop may cause template misses.
-2. Use the Tk overlay to pause instead of Alt+Tabbing; the timer stays accurate and resume logic will click back into the game automatically.
+1. Keep FH5 focused on the Search Auction screen. Script will re-focus periodically, but switching away mid-loop may cause template misses.
+2. Use the Overlay to pause instead of Alt+Tabbing; the timer stays accurate and resume logic will click back into the game automatically.
 3. When templates stop matching, enable `DEBUG_MODE` to capture fresh screenshots, then update the Excel coordinates or the image packs.
-
-![Auction House](archive/auction_house.png)
