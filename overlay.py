@@ -34,6 +34,7 @@ class OverlayController:
         self._current_car = '—'
         self._remaining_buyouts = 0
         self._purchased_count = 0
+        self._session_purchases = 0
         self._remaining_seconds: float = 0.0
         self._last_tick: float = time.time()
 
@@ -47,6 +48,7 @@ class OverlayController:
         remaining_seconds: Optional[float] = None,
         remaining_buyouts: Optional[int] = None,
         purchased_count: Optional[int] = None,
+        session_purchases: Optional[int] = None,
     ) -> None:
         """Store overlay info from any thread; picked up by UI poller."""
         with self._info_lock:
@@ -59,6 +61,8 @@ class OverlayController:
                 self._remaining_buyouts = max(0, int(remaining_buyouts))
             if purchased_count is not None:
                 self._purchased_count = max(0, int(purchased_count))
+            if session_purchases is not None:
+                self._session_purchases = max(0, int(session_purchases))
 
     def get_remaining_seconds(self) -> int:
         """Expose the current countdown so the main loop can stay in sync."""
@@ -118,6 +122,7 @@ class OverlayController:
         root.attributes('-topmost', True)
         root.attributes('-alpha', 0.9)
         root.overrideredirect(True)
+        root.minsize(230, 210)
 
         status_var = tk.StringVar(value='Running')
 
@@ -128,15 +133,13 @@ class OverlayController:
             left, top, width, height = bounds
             margin = 16
             root.update_idletasks()
-            ow = root.winfo_width() or 180
+            ow = max(root.winfo_width() or 0, 230)
             oh = root.winfo_height() or 120
             x = int(left + width - ow - margin)
             y = int(top + height - oh - margin)
             min_x = int(left + margin)
             min_y = int(top + margin)
-            root.geometry(f'+{max(x, min_x)}+{max(y-100, min_y)}')
-
-        place_overlay(window_bounds)
+            root.geometry(f'+{max(x - 50, min_x)}+{max(y - 150, min_y)}')
 
         def toggle_pause():
             if self.pause_event.is_set():
@@ -172,17 +175,22 @@ class OverlayController:
         status_lbl.pack(anchor='w', pady=(2, 8))
 
         car_var = tk.StringVar(value='Car: —')
-        timer_var = tk.StringVar(value='Time left: 30:00')
-        stock_var = tk.StringVar(value='Remaining: 0')
-        bought_var = tk.StringVar(value='Bought: 0')
+        timer_var = tk.StringVar(value='Window: 00:00')
+        stock_var = tk.StringVar(value='Left: 0')
+        bought_var = tk.StringVar(value='Hits: 0')
+        session_var = tk.StringVar(value='Session Hits: 0')
         car_lbl = tk.Label(frame, textvariable=car_var, fg='white', bg='#111111', font=('Consolas', 10))
         timer_lbl = tk.Label(frame, textvariable=timer_var, fg='#66ccff', bg='#111111', font=('Consolas', 10))
         stock_lbl = tk.Label(frame, textvariable=stock_var, fg='#ffcc66', bg='#111111', font=('Consolas', 10))
         bought_lbl = tk.Label(frame, textvariable=bought_var, fg='#66ffcc', bg='#111111', font=('Consolas', 10))
+        session_lbl = tk.Label(frame, textvariable=session_var, fg='#f2a0ff', bg='#111111', font=('Consolas', 10))
         car_lbl.pack(anchor='w')
         timer_lbl.pack(anchor='w')
         stock_lbl.pack(anchor='w')
-        bought_lbl.pack(anchor='w', pady=(0, 8))
+        bought_lbl.pack(anchor='w')
+        session_lbl.pack(anchor='w', pady=(0, 8))
+
+        place_overlay(window_bounds)
 
         btn_style = {
             'bg': '#1e1e1e',
@@ -217,14 +225,16 @@ class OverlayController:
                 car_name = self._current_car
                 remaining_buyouts = self._remaining_buyouts
                 purchased = self._purchased_count
+                session_total = self._session_purchases
                 remaining = self._update_remaining_locked(now)
             remaining_secs = int(round(remaining))
             minutes = remaining_secs // 60
             seconds = remaining_secs % 60
-            car_var.set(f'Car: {car_name or "—"}')
-            timer_var.set(f'Time left: {minutes:02d}:{seconds:02d}')
-            stock_var.set(f'Remaining: {remaining_buyouts}')
-            bought_var.set(f'Bought: {purchased}')
+            car_var.set(f'Target: {car_name or "—"}')
+            timer_var.set(f'Window: {minutes:02d}:{seconds:02d}')
+            stock_var.set(f'Left: {remaining_buyouts}')
+            bought_var.set(f'Car Hits: {purchased}')
+            session_var.set(f'Session Hits: {session_total}')
             root.after(1000, refresh_overlay_info)
 
         def monitor_stop_flag():

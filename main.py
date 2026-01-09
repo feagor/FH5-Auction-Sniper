@@ -605,10 +605,11 @@ def set_auc_search_cond(new_car, old_car):
     log_and_print('info', f'Start sniping {new_car.get("Make_Name")}, {new_car.get("Model_FName")}', GREEN_CODE)
     start_time = time.time()
     overlay_controller.update_status(
-        new_car.get('Model_SName'),
-        SNIPE_SEC_LIMIT,
-        new_car.get('Buyout_num'),
-        new_car.get('Bought_num'),
+        car_name=new_car.get('Model_SName'),
+        remaining_seconds=SNIPE_SEC_LIMIT,
+        remaining_buyouts=new_car.get('Buyout_num'),
+        purchased_count=new_car.get('Bought_num'),
+        session_purchases=bought_in_session,
     )
     refresh_snipe_time_left()
 
@@ -676,6 +677,7 @@ def buyout(snipe_car) -> bool:
                 overlay_controller.update_status(
                     remaining_buyouts = new_buyout_count,
                     purchased_count   = snipe_car['Bought_num'],
+                    session_purchases = bought_in_session,
                 )
                 buyout_res_fl = True
                 result = True                   
@@ -785,6 +787,7 @@ def main():
             overlay_controller.update_status(
                 remaining_buyouts=snipe_car['Buyout_num'],
                 purchased_count=snipe_car['Bought_num'],
+                session_purchases=bought_in_session,
             )
         else:
             log_and_print('debug', 'Auction results not found :(')

@@ -8,7 +8,7 @@ Forza Horizon 5 auction sniping automation that combines OpenCV template matchin
 
 - **Excel-controlled queue** – `FH5_all_cars_info_v4.xlsx` stores make/model coordinates, model picker offsets, and personal buyout quotas. The loop only touches cars with `BUYOUT NUM > 0` and auto-rotates when a timer or quota runs out.
 - **Smart search conditioning** – `set_auc_search_cond` resets the auction filters, navigates straight to the stored make/model coordinates, snaps the buyout slider to the closest supported ladder value, and keeps the overlay timer in sync.
-- **Tk overlay with pause/resume** – the overlay shows current target, remaining rotation time, remaining buyouts, and purchased count. Pause freezes the countdown, resume re-focuses FH5 automatically so global hotkeys don’t leak into the overlay.
+- **Tk overlay with pause/resume** – the overlay shows the active target, rotation window, remaining copies, and both per-car and session hit counters. Pause freezes the countdown, resume re-focuses FH5 automatically so global hotkeys don’t leak into the overlay.
 - **Robust window management** – `pre_check` validates monitor DPI via `get_monitors.py`, focuses the FH5 window, resizes it to 1616×939, and optionally takes debug screenshots for every template match.
 - **Multi-locale templates** – drop pixel-perfect screenshots under `images/ENG` or `images/RUS`, then point `LOCAL` and `LOCAL_MAKE_COL` at the right workbook columns.
 
@@ -57,6 +57,7 @@ Adjust `settings.ini` if your environment differs (e.g., switch locale, rename t
 - ## System Requirements
 
 - Windows 10/11 host with FH5 configured. The automation has been tested on FHD (1920×1080), 2K, and 4K panels thanks to the enforced resize to 1616×939 during `pre_check`.
+- Disable HDR on the display running FH5 so the captured colors stay consistent with the shipped template packs; HDR tone mapping shifts pixel values enough to break OpenCV matches.
 - Python < 3.13 with the packages in `requirements.txt` **plus** `pywin32` and `wmi` (needed by `get_monitors.py`).
    
 ## Running the Sniper
@@ -94,7 +95,7 @@ python main.py
 
 - **Pause/Resume** – click the overlay button or use the pause hotkey (if configured); the countdown freezes instantly, and resuming re-focuses FH5 so global ESC presses don’t hit the overlay.
 - **Stop** – exits gracefully by setting `STOP_EVENT`, closing the overlay, and stopping the automation loop.
-- **Status fields** – car name, time left in the current rotation, remaining buyouts for that car, and purchased count for the whole session update from any thread via `overlay_controller.update_status`.
+- **Status fields** – car name, time left in the current rotation, remaining buyouts for that car, per-car purchased count, and the session-wide total update from any thread via `overlay_controller.update_status`.
 
 ## Operating Tips
 
