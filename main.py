@@ -679,7 +679,7 @@ def buyout(snipe_car) -> bool:
                 in_dr.wait(0.3)
                 in_dr.tap('esc')
             else:
-                log_and_print('info', f'[{format_elapsed_time()}]  BUYOUT Missed!', YELLOW_CODE)
+                log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Missed!', YELLOW_CODE)
                 in_dr.tap('esc')
                 in_dr.wait(3)
     in_dr.wait(0.3)
