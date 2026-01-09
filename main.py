@@ -621,7 +621,7 @@ def buyout(snipe_car) -> bool:
         exit_script()
     
     # Press buyout button and wait result       
-    while not buyout_press_fl or iter<=10:
+    while not buyout_press_fl and iter<=10:
         wait_if_paused()
         in_dr.wait(0.2)
         in_dr.tap('y')
@@ -647,7 +647,7 @@ def buyout(snipe_car) -> bool:
     ## buyout button succesfully pressed, try to get buyout result
     if buyout_press_fl:
         iter = 0
-        while not buyout_res_fl or iter<=10:
+        while not buyout_res_fl and iter<=10:
             wait_if_paused()
             iter += 1
             found_buyout_failed = get_best_match_img_array(IMAGE_PATH_BF, REGION_AUCTION_ACTION_MENU)
@@ -670,17 +670,19 @@ def buyout(snipe_car) -> bool:
                 overlay_controller.update_status(
                     remaining_buyouts = new_buyout_count,
                     purchased_count   = snipe_car['Bought_num'],
-                )                   
+                )
+                buyout_res_fl = True
+                result = True                   
                 in_dr.tap('enter')
                 in_dr.wait(0.3)
                 in_dr.tap('esc')
-                buyout_press_fl = True
-                result = True
+                in_dr.wait(0.3)
+                in_dr.tap('esc')
             else:
                 log_and_print('info', f'[{format_elapsed_time()}]  BUYOUT Missed!', YELLOW_CODE)
                 in_dr.tap('esc')
-            in_dr.wait(3)
-    in_dr.wait(0.5)
+                in_dr.wait(3)
+    in_dr.wait(0.3)
     in_dr.tap('esc')
     return result
 
