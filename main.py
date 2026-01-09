@@ -22,15 +22,14 @@ import colorama
 from overlay import OverlayController
 
 class InputDriver:
-    """Wraps keyboard/mouse automation with configurable timing."""
+    """Wraps keyboard/mouse automation with consistent timing helpers."""
 
-    def __init__(self, keyboard, pointer, delay_scale: float = 1.0):
+    def __init__(self, keyboard, pointer):
         self.keyboard = keyboard
         self.pointer = pointer
-        self.delay_scale = max(delay_scale, 0.0)
 
     def wait(self, seconds: float) -> None:
-        time.sleep(max(0.0, seconds) * (self.delay_scale or 1.0))
+        time.sleep(max(0.0, seconds))
 
     def tap(self, key: str, count: int = 1, interval: float = 0.1) -> None:
         for _ in range(max(0, int(count))):
@@ -91,14 +90,10 @@ EXCEL_FILENAME      = get_config_value('GENERAL', 'EXCEL_FILENAME', 'FH5_all_car
 EXCEL_SHEET_NAME    = get_config_value('GENERAL', 'EXCEL_SHEET_NAME', 'all_cars_info')
 LOCAL_MAKE_COL      = get_config_value('GENERAL', 'LOCAL_MAKE_COL', 'MAKE LOC (ENG)')
 DEBUG_MODE          = get_config_value('GENERAL', 'DEBUG_MODE', False, bool)
-GAME_TITLE          = get_config_value('GENERAL', 'GAME_TITLE', 'Forza Horizon 5')
-INPUT_DELAY_SCALE   = get_config_value('GENERAL', 'INPUT_DELAY_SCALE', 1.0, float)
 WAIT_RESULT_TIME    = get_config_value('GENERAL', 'WAIT_RESULT_TIME', 1.0, float)
 MAX_BUYOUT_PRICE    = get_config_value('GENERAL', 'MAX_BUYOUT_PRICE', 1000000, int)
 SHUFFLE_CAR_LIST    = get_config_value('GENERAL', 'SHUFFLE_CAR_LIST', False, bool)
 SNIPE_MIN_LIMIT     = get_config_value('GENERAL', 'SNIPE_MIN_LIMIT', 30, int)
-SNIPE_SEC_LIMIT     = SNIPE_MIN_LIMIT * 60
-
 # Constants (colorama codes kept for terminal coloring)
 RED_CODE = '\033[1;31;40m'
 GREEN_CODE = '\033[1;32;40m'
@@ -106,7 +101,9 @@ YELLOW_CODE = '\033[1;33;40m'
 BLUE_CODE = '\033[1;34;40m'
 CYAN_CODE = '\033[1;36;40m'
 COLOR_END_CODE = '\033[0m'
-
+#Other constants
+SNIPE_SEC_LIMIT     = SNIPE_MIN_LIMIT * 60
+GAME_TITLE          = 'Forza Horizon 5'
 PAUSE_EVENT = threading.Event()
 STOP_EVENT = threading.Event()
 
@@ -809,7 +806,7 @@ overlay_controller = OverlayController(
     color_map={'resume': GREEN_CODE, 'pause': YELLOW_CODE, 'stop': RED_CODE},
     refocus_callback=active_game_window,
 )
-in_dr = InputDriver(pydi, pydi, INPUT_DELAY_SCALE)
+in_dr = InputDriver(pydi, pydi)
 colorama.init(wrap=True)
 pydi.PAUSE = 0
 

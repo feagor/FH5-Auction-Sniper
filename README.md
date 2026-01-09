@@ -80,8 +80,8 @@ Run the commands from the project root so `settings.ini`, the Excel workbook, an
 
 1. Update `settings.ini`:
    - `LOCAL` + `LOCAL_MAKE_COL` must match the template pack you intend to use.
-   - `MAX_BUYOUT_PRICE` snaps to the nearest supported ladder value (see the list in `set_auc_search_cond`).
-   - Timing knobs: `WAIT_RESULT_TIME`, `INPUT_DELAY_SCALE`, `SNIPE_MIN_LIMIT` (minutes per rotation) / `SNIPE_SEC_LIMIT` (auto-derived seconds).
+   - `MAX_BUYOUT_PRICE` snaps to the nearest supported ladder value
+   - Timing knobs: `WAIT_RESULT_TIME`, `SNIPE_MIN_LIMIT` (minutes per rotation) / `SNIPE_SEC_LIMIT` (auto-derived seconds).
    - `DEBUG_MODE=true` to enable region captures and verbose logs.
 2. Edit the Excel workbook:
    - Set `BUYOUT NUM` to the number of copies you still need. The script decrements and persists the value using `update_buyout`.
