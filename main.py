@@ -3,6 +3,7 @@ import sys
 import time
 import logging
 import threading
+import random
 from logging.handlers import RotatingFileHandler
 import configparser
 from bisect import bisect_right
@@ -94,6 +95,7 @@ GAME_TITLE          = get_config_value('GENERAL', 'GAME_TITLE', 'Forza Horizon 5
 INPUT_DELAY_SCALE   = get_config_value('GENERAL', 'INPUT_DELAY_SCALE', 1.0, float)
 WAIT_RESULT_TIME    = get_config_value('GENERAL', 'WAIT_RESULT_TIME', 1.0, float)
 MAX_BUYOUT_PRICE    = get_config_value('GENERAL', 'MAX_BUYOUT_PRICE', 1000000, int)
+SHUFFLE_CAR_LIST    = get_config_value('GENERAL', 'SHUFFLE_CAR_LIST', False, bool)
 SNIPE_MIN_LIMIT     = get_config_value('GENERAL', 'SNIPE_MIN_LIMIT', 30, int)
 SNIPE_SEC_LIMIT     = SNIPE_MIN_LIMIT * 60
 
@@ -507,6 +509,10 @@ def load_cars_from_excel():
     if not cars:
         log_and_print('error', 'Car list is empty after processing the workbook.', RED_CODE)
         exit_script()
+
+    if SHUFFLE_CAR_LIST:
+        random.shuffle(cars)
+        log_and_print('info', f'Car list shuffled (total {len(cars)} entries).', CYAN_CODE)
 
     return cars
 
