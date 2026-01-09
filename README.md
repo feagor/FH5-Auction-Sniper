@@ -15,7 +15,6 @@ Forza Horizon 5 auction sniping automation that combines OpenCV template matchin
 ## Performance Preview ( Demo)
 > **TODO:** Embed the  demo clip or GIF once it’s rendered.
 
-
 ## Result Preview
 > **TODO:** Drop final screenshot(s) that show the in-game purchase confirmation and summary table.
 
