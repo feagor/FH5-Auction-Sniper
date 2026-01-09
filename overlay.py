@@ -257,7 +257,6 @@ class OverlayController:
                     self._refocus_if_needed()
             root.after(200, monitor_pause_flag)
 
-        root.bind('<Escape>', lambda _event: request_stop())
         root.after(200, refresh_overlay_info)
         root.after(200, monitor_stop_flag)
         root.after(200, monitor_pause_flag)
