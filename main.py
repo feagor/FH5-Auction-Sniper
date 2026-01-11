@@ -602,7 +602,7 @@ def set_auc_search_cond(new_car, old_car):
         first_run = False
     
     in_dr.tap('s', 5, 0.3) #goto search button
-    log_and_print('info', f'Start sniping {new_car.get("Make_Name")}, {new_car.get("Model_FName")}', GREEN_CODE)
+    log_and_print('info', f'Start sniping for {new_car.get("Make_Name")}, {new_car.get("Model_FName")}', GREEN_CODE)
     start_time = time.time()
     overlay_controller.update_status(
         car_name=new_car.get('Model_SName'),
