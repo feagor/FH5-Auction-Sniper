@@ -170,6 +170,7 @@ def something_wrong():
         2: ('My Festival',5)
     }
     #try to open auction page again, if locates in home/festival menu
+    log_and_print('warning', f'Try to detect current location', YELLOW_CODE)
     home_page_result = get_best_match_img_array(
         [IMAGE_PATH_HMBS, IMAGE_PATH_HMG, IMAGE_PATH_HMMF], 
         REGION_HOME_TABS
@@ -177,13 +178,13 @@ def something_wrong():
     if home_page_result:
         _, page_idx = home_page_result
         page_name, hold_seconds = HOME_TAB_META.get(page_idx, (f'index {page_idx}', 5))
-        log_and_print('warning', f'Now located in Home/Festival menu ({page_name}). Try to open Auction House.', RED_CODE)
+        log_and_print('warning', f'Now located in Home/Festival menu ({page_name}). Try to open Auction House.', YELLOW_CODE)
         in_dr.hold('a', hold_seconds)
         in_dr.tap('w')
         in_dr.tap('enter')
         in_dr.wait(1)
     else:
-        log_and_print('warning', f'Fail to match anything. {miss_times}-th try to press ESC to see whether it works!', RED_CODE)
+        log_and_print('warning', f'Fail to match anything and detect location. {miss_times}-th try to press ESC to see whether it works!', RED_CODE)
         active_game_window()
         in_dr.tap('esc')
         in_dr.wait(2)
@@ -552,14 +553,16 @@ def set_auc_search_cond(new_car, old_car):
     log_and_print('info', f'Setting search to: {new_car.get("Make_Name")}, {new_car.get("Model_FName")}', YELLOW_CODE)
     Make_X_Delta = int(old_car['Make_Loc'][0] - new_car['Make_Loc'][0])
     Make_Y_Delta = int(old_car['Make_Loc'][1] - new_car['Make_Loc'][1])
+    log_and_print('debug', f'New car make loc - {new_car["Make_Loc"]}, Prev car make loc - {old_car["Make_Loc"]}, Delta move - ({Make_X_Delta}, {Make_Y_Delta})', CYAN_CODE)
+
     in_dr.hold('w', 1.5) #goto make
     #not the same make
     if Make_X_Delta != 0 or Make_Y_Delta != 0: 
         in_dr.tap('enter')
         in_dr.wait(0.5)
-        in_dr.step('w', 's', Make_Y_Delta)
+        in_dr.step('w', 's', Make_Y_Delta, 0.2)
         in_dr.wait(0.5)
-        in_dr.step('a', 'd', Make_X_Delta)
+        in_dr.step('a', 'd', Make_X_Delta, 0.2)
         in_dr.wait(1)
         in_dr.tap('enter', 1, 0)
         in_dr.wait(0.5)
@@ -617,7 +620,7 @@ def buyout(snipe_car) -> bool:
         return f'[{int(seconds // 60)}:{int(seconds % 60):02d}]'
     global bought_in_session
     result = False
-    log_and_print('info', 'Car found in stock, trying to buyout...', GREEN_CODE)
+    log_and_print('info', 'Car found in stock, try to buyout', GREEN_CODE)
     buyout_press_fl, buyout_res_fl = False, False
     iter = 0
     found_PB = found_VS = found_AO = None
@@ -707,7 +710,7 @@ def update_buyout(row_index: int, buyout_num: int) -> None:
             return
         ws.cell(row=target_row, column=buyout_col, value=int(buyout_num))
         wb.save(EXCEL_PATH)
-        log_and_print('debug', f'Updated BUYOUT NUM at row {row_index} to {buyout_num}', GREEN_CODE)
+        log_and_print('debug', f'Updated BUYOUT NUM for at row {row_index} to {buyout_num}', GREEN_CODE)
     except Exception as exc:
         log_and_print('error', f'Failed to update BUYOUT NUM: {exc}', RED_CODE)
 
@@ -731,7 +734,7 @@ def main():
         refresh_snipe_time_left()
         if snipe_secs_left <= 0 and not first_run:
             swap_car_fl = True
-            log_and_print('info', f'Snipe for {snipe_car["Model_SName"]} timed out. Switching to next car.', YELLOW_CODE)
+            log_and_print('info', f'Sniping for {snipe_car["Make_Name"]}, {snipe_car["Model_FName"]} timed out. Switching to next car.', YELLOW_CODE)
         in_dr.wait(0.35)
         wait_if_paused()
         is_search_auc_pressed = press_image(IMAGE_PATH_SA, REGION_AUCTION_MAIN)
@@ -771,7 +774,7 @@ def main():
                 cars[snipe_idx] = snipe_car
                 if buyout_succeeded and snipe_car['Buyout_num'] == 0:
                     swap_car_fl = True
-                    log_and_print('info', f'Snipe for {snipe_car["Model_SName"]} Finished successfully. Switching to next car.', YELLOW_CODE)
+                    log_and_print('info', f'Snipe for {snipe_car["Make_Name"]}, {snipe_car["Model_FName"]} Finished successfully. Switching to next car.', YELLOW_CODE)
 
             elif is_car_found is None and is_auc_res_found and is_confirm_button_pressed:
                 log_and_print('debug', 'Car not found in stock')
@@ -787,7 +790,7 @@ def main():
                 session_purchases=bought_in_session,
             )
         else:
-            log_and_print('debug', 'Auction results not found :(')
+            log_and_print('warning', 'Auction results not found, try to increase WAIT_RESULT_TIME parameter', RED_CODE)
             something_wrong()
             continue
 
