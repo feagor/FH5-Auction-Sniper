@@ -397,7 +397,7 @@ def measure_game_window():
                 525 + win_size['left'],
                 330 + win_size['top'],
                 530,
-                210,
+                220,
             )
             REGION_AUCTION_RESULT = (
                 60 + win_size['left'],
@@ -630,7 +630,7 @@ def buyout(snipe_car) -> bool:
     
     # Press buyout button and wait result       
     iter = 0
-    while not buyout_press_fl and iter<=10:
+    while not buyout_press_fl and iter<=10 and not STOP_EVENT.is_set():
         wait_if_paused()
         in_dr.wait(0.2)
         in_dr.tap('y')
@@ -658,7 +658,7 @@ def buyout(snipe_car) -> bool:
     ## buyout button succesfully pressed, try to get buyout result
     if buyout_press_fl:
         iter = 0
-        while not buyout_res_fl and iter<10:
+        while not buyout_res_fl and iter<10 and not STOP_EVENT.is_set():
             iter += 1
             wait_if_paused()
             match = get_best_match_img_array([IMAGE_PATH_BF,IMAGE_PATH_BS,IMAGE_PATH_DLC], REGION_AUCTION_ACTION_MENU)
