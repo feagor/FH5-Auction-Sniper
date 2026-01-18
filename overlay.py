@@ -29,7 +29,6 @@ class OverlayController:
         self.log_callback = log_callback
         self.color_map = dict(color_map) if color_map else {}
         self._refocus_callback = refocus_callback
-        self._thread: Optional[threading.Thread] = None
         self._info_lock = threading.Lock()
         self._current_car = '—'
         self._remaining_buyouts = 0
@@ -37,6 +36,8 @@ class OverlayController:
         self._session_purchases = 0
         self._remaining_seconds: float = 0.0
         self._last_tick: float = time.time()
+        self._pending_bounds: Optional[Tuple[int, int, int, int]] = None
+        self._launch_event = threading.Event()
 
     @property
     def available(self) -> bool:
@@ -85,21 +86,26 @@ class OverlayController:
             self._last_tick = now
         return remaining
 
-    def launch(self, window_bounds: Optional[Tuple[int, int, int, int]] = None) -> Optional[threading.Thread]:
-        """Start the overlay in a daemon thread if tkinter is present."""
+    def request_launch(self, window_bounds: Tuple[int, int, int, int]) -> None:
+        """Store bounds and signal the main thread to start Tk when ready."""
         if not self.available:
-            self.logger.warning('tkinter is not available. Overlay controls disabled.')
-            return None
-        if self._thread and self._thread.is_alive():
-            return self._thread
-        self._thread = threading.Thread(
-            target=self._run_overlay,
-            args=(window_bounds,),
-            name='OverlayUI',
-            daemon=True,
-        )
-        self._thread.start()
-        return self._thread
+            return
+        with self._info_lock:
+            self._pending_bounds = window_bounds
+        self._launch_event.set()
+
+    def run_mainloop(self, abort_check: Optional[Callable[[], bool]] = None) -> None:
+        """Block the calling thread until a launch is requested, then run Tk there."""
+        if not self.available:
+            return
+        while not self._launch_event.wait(0.1):
+            if self.stop_event.is_set() or (abort_check and abort_check()):
+                return
+        with self._info_lock:
+            bounds = self._pending_bounds
+            self._pending_bounds = None
+        self._launch_event.clear()
+        self._run_overlay(bounds)
 
     def _log(self, level: str, message: str, color: Optional[str] = None) -> None:
         if self.log_callback:

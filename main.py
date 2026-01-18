@@ -453,7 +453,7 @@ def pre_check():
     log_and_print('info', f"Resize {GAME_TITLE} resolution to {win_size['width']}x{win_size['height']} pixels!", CYAN_CODE)
     
     if overlay_controller.available:
-        overlay_controller.launch((win_size['left'], win_size['top'], win_size['width'], win_size['height']))
+        overlay_controller.request_launch((win_size['left'], win_size['top'], win_size['width'], win_size['height']))
     else:
         logger.debug('Overlay disabled: tkinter module not available')
     
@@ -720,7 +720,6 @@ def buyout(snipe_car) -> bool:
     return result
 
 
-
 def update_buyout(row_index: int, buyout_num: int) -> None:
     try:
         wb = load_workbook(EXCEL_PATH)
@@ -741,7 +740,7 @@ def update_buyout(row_index: int, buyout_num: int) -> None:
         log_and_print('error', f'Failed to update BUYOUT NUM in Excel sheetн: {exc}', RED_CODE)
 
 
-def main():
+def automation_main():
     global bought_in_session
     pre_check()
     swap_car_fl = True
@@ -840,6 +839,18 @@ colorama.init(wrap=True)
 pydi.PAUSE = 0
 
 ##END INIT BLOCK##
+
+def main():
+    if overlay_controller.available:
+        worker = threading.Thread(target=automation_main, name='FH5Automation')
+        worker.start()
+
+        overlay_controller.run_mainloop(abort_check=lambda: not worker.is_alive())
+
+        worker.join()
+    else:
+        automation_main()
+
 
 if __name__ == "__main__":
     main()
