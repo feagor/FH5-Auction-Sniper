@@ -13,7 +13,7 @@ Forza Horizon 5 auction sniping automation that combines OpenCV template matchin
 - **Multi-locale templates** – drop pixel-perfect screenshots under `images/ENG` or `images/RUS`, then point `LOCAL` and `LOCAL_MAKE_COL` at the right workbook columns. English (ENG) and Russian (RUS) packs ship out of the box; community PRs for additional locales are welcome.
 
 ## Performance Preview ( Demo)
-> **TODO:** Embed the  demo clip or GIF once it’s rendered.
+
 
 ## Result Preview
 > **TODO:** Drop final screenshot(s) that show the in-game purchase confirmation and summary table.
@@ -29,7 +29,7 @@ Forza Horizon 5 auction sniping automation that combines OpenCV template matchin
 
 ## Data Requirements
 
-- Keep [FH5_all_cars_info_v4.xlsx](https://github.com/feagor/FH5-Auction-Sniper/blob/main/FH5_all_cars_info_v4.xlsx) up to date. Wrong `MODEL LOC` or stale menu coordinates will snipe unintended cars.
+- Keep [FH5_all_cars_info_v4.xlsx](https://github.com/feagor/FH5-Auction-Sniper/blob/main/FH5_all_cars_info_v4.xlsx) up to date. Wrong `MODEL LOC` or stale menu coordinates will snipe unintended cars. Model Location depends of Localization. If it works on Eng, no garantee that it will work in Rus
 - Only rows with `BUYOUT NUM > 0` and `MODEL LOC != -1` are considered. Each car tracks both remaining buyouts and how many you’ve purchased during the current session.
 - Locale-specific columns:
     - `LOCAL_MAKE_COL` (e.g., `MAKE LOC (ENG)` or `MAKE LOC (RUS)`) must contain `(x,y)` tuples for the Make grid.
