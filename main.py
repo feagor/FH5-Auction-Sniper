@@ -136,6 +136,7 @@ REGION_AUCTION_RESULT      = (0,0,0,0)
 # Screenshot matching parameters
 THRESHOLD = 0.8
 WIDTH_RATIO, HEIGHT_RATIO = 1, 1
+MAX_BUYOUT_ATTEMPTS = 10
 EMPTY_CAR_INFO = {
     'Excel_index': -1,
     'Make_Name': '',
@@ -633,78 +634,79 @@ def buyout(snipe_car) -> bool:
     global bought_in_session
     result = False
     log_and_print('info', 'Car found in stock, try to buyout', GREEN_CODE)
-    buyout_press_fl, buyout_res_fl = False, False    
+    buyout_press_fl = False
     if STOP_EVENT.is_set():
         exit_script()
-    
-    # Press buyout button and wait result       
-    iter = 0
-    while not buyout_press_fl and iter<=10 and not STOP_EVENT.is_set():
+
+    for attempt in range(1, MAX_BUYOUT_ATTEMPTS + 1):
+        if STOP_EVENT.is_set():
+            exit_script()
         wait_if_paused()
         in_dr.wait(0.2)
         in_dr.tap('y')
         in_dr.wait(0.2)
-        match = get_best_match_img_array([IMAGE_PATH_PB,IMAGE_PATH_VS], REGION_AUCTION_ACTION_MENU)
-        if match:
-            found_res, idx = match
-            in_dr.wait(0.3)
-            # we are at active "Place Bid", need go down to buyout
-            if idx == 0:
-                in_dr.tap('s')
-                in_dr.tap('enter')
-                in_dr.wait(0.5)
-                in_dr.tap('enter')
-                buyout_press_fl = True
-                in_dr.wait(3)
-            # we are at active View seller, this means someone bought before us
-            elif idx == 1:
-                break
-        iter += 1
-    
-    if iter >= 10:
+        buyout_result = get_best_match_img_array([IMAGE_PATH_PB, IMAGE_PATH_VS], REGION_AUCTION_ACTION_MENU)
+        if not buyout_result:
+            continue
+        _, idx = buyout_result
+        in_dr.wait(0.3)
+        
+        # we are at active "Place Bid", need go down to buyout
+        if idx == 0:
+            in_dr.tap('s')
+            in_dr.tap('enter')
+            in_dr.wait(0.5)
+            in_dr.tap('enter')
+            in_dr.wait(5)
+            buyout_press_fl = True
+            break
+        # we are at active View seller, this means someone bought before us
+        if idx == 1:
+            break
+    else:
         something_wrong()
 
     ## buyout button succesfully pressed, try to get buyout result
     if buyout_press_fl:
-        iter = 0
-        while not buyout_res_fl and iter<10 and not STOP_EVENT.is_set():
-            iter += 1
+        for attempt in range(1, MAX_BUYOUT_ATTEMPTS + 1):
+            if STOP_EVENT.is_set():
+                break
             wait_if_paused()
-            match = get_best_match_img_array([IMAGE_PATH_BF,IMAGE_PATH_BS,IMAGE_PATH_DLC], REGION_AUCTION_ACTION_MENU)
-            if not match:
-                log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Missed {iter}/10 time', YELLOW_CODE)
+            buyout_result = get_best_match_img_array([IMAGE_PATH_BF, IMAGE_PATH_BS, IMAGE_PATH_DLC], REGION_AUCTION_ACTION_MENU)
+            if not buyout_result:
+                log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Missed {attempt}/{MAX_BUYOUT_ATTEMPTS} time', YELLOW_CODE)
                 in_dr.wait(3)
                 continue
 
-            found_buyout_res, idx = match
-            if idx==0:
+            _, idx = buyout_result
+            if idx == 0:
                 log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Failed!', RED_CODE)
                 in_dr.tap('enter')
                 in_dr.wait(0.3)
                 in_dr.tap('esc')
-                buyout_res_fl = True
-            elif idx==1:
+                break
+            if idx == 1:
                 log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Success!', GREEN_CODE)
                 new_buyout_count = max(0, snipe_car['Buyout_num'] - 1)
                 update_buyout(snipe_car['Excel_index'], new_buyout_count)
                 snipe_car['Buyout_num'] = new_buyout_count
                 snipe_car['Bought_num'] += 1
                 bought_in_session += 1
-                
+
                 refresh_snipe_time_left()
                 overlay_controller.update_status(
-                    remaining_buyouts = new_buyout_count,
-                    purchased_count   = snipe_car['Bought_num'],
-                    session_purchases = bought_in_session,
+                    remaining_buyouts=new_buyout_count,
+                    purchased_count=snipe_car['Bought_num'],
+                    session_purchases=bought_in_session,
                 )
-                buyout_res_fl = True
                 result = True
                 in_dr.tap('enter')
                 in_dr.wait(0.3)
                 in_dr.tap('esc')
                 in_dr.wait(0.3)
                 in_dr.tap('esc')
-            elif idx==2:
+                break
+            if idx == 2:
                 log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Failed! (DLC Required)', RED_CODE)
                 new_buyout_count = 0
                 snipe_car['Buyout_num'] = new_buyout_count
@@ -712,17 +714,17 @@ def buyout(snipe_car) -> bool:
 
                 refresh_snipe_time_left()
                 overlay_controller.update_status(
-                    remaining_buyouts = new_buyout_count,
-                    purchased_count   = snipe_car['Bought_num'],
-                    session_purchases = bought_in_session,
+                    remaining_buyouts=new_buyout_count,
+                    purchased_count=snipe_car['Bought_num'],
+                    session_purchases=bought_in_session,
                 )
-                buyout_res_fl = True
                 result = True
                 in_dr.tap('esc')
                 in_dr.wait(0.3)
                 in_dr.tap('esc')
-        if iter>=10:
-            log_and_print('info', f'BUYOUT Missed {iter} time - something wrong', RED_CODE)
+                break
+        else:
+            log_and_print('info', f'BUYOUT Missed {MAX_BUYOUT_ATTEMPTS} time - something wrong', RED_CODE)
     in_dr.wait(0.3)
     in_dr.tap('esc')
     in_dr.wait(0.3)
