@@ -113,12 +113,15 @@ EXCEL_PATH = os.path.join(CURRENT_DIR, EXCEL_FILENAME)
 IMAGE_PATH_SA   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'SA.png')
 IMAGE_PATH_CF   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'CF.png')
 IMAGE_PATH_AT   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'AT.png')
-IMAGE_PATH_BF   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'BF.png')
+
 IMAGE_PATH_PB   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'PB.png')
-IMAGE_PATH_BS   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'BS.png')
-IMAGE_PATH_NB   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'NB.png')
 IMAGE_PATH_VS   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'VS.png')
 IMAGE_PATH_AO   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'AO.png')
+IMAGE_PATH_BS   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'BS.png')
+IMAGE_PATH_BF   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'BF.png')
+IMAGE_PATH_DLC  = os.path.join(CURRENT_DIR, 'images', LOCAL, 'DLC.png')
+
+IMAGE_PATH_AR   = os.path.join(CURRENT_DIR, 'images', LOCAL, 'AR.png')
 IMAGE_PATH_HMG  = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMG.png')
 IMAGE_PATH_HMMF = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMMF.png')
 IMAGE_PATH_HMBS = os.path.join(CURRENT_DIR, 'images', LOCAL, 'HMBS.png')
@@ -394,7 +397,7 @@ def measure_game_window():
                 525 + win_size['left'],
                 330 + win_size['top'],
                 530,
-                190,
+                210,
             )
             REGION_AUCTION_RESULT = (
                 60 + win_size['left'],
@@ -559,13 +562,13 @@ def set_auc_search_cond(new_car, old_car):
     #not the same make
     if Make_X_Delta != 0 or Make_Y_Delta != 0: 
         in_dr.tap('enter')
-        in_dr.wait(0.5)
-        in_dr.step('w', 's', Make_Y_Delta, 0.2)
-        in_dr.wait(0.5)
-        in_dr.step('a', 'd', Make_X_Delta, 0.2)
+        in_dr.wait(0.3)
+        in_dr.step('w', 's', Make_Y_Delta, 0.15)
+        in_dr.wait(0.3)
+        in_dr.step('a', 'd', Make_X_Delta, 0.15)
         in_dr.wait(1)
         in_dr.tap('enter', 1, 0)
-        in_dr.wait(0.5)
+        in_dr.wait(0.3)
     
     if STOP_EVENT.is_set():
         return
@@ -621,51 +624,57 @@ def buyout(snipe_car) -> bool:
     global bought_in_session
     result = False
     log_and_print('info', 'Car found in stock, try to buyout', GREEN_CODE)
-    buyout_press_fl, buyout_res_fl = False, False
-    iter = 0
-    found_PB = found_VS = found_AO = None
+    buyout_press_fl, buyout_res_fl = False, False    
     if STOP_EVENT.is_set():
         exit_script()
     
     # Press buyout button and wait result       
+    iter = 0
     while not buyout_press_fl and iter<=10:
         wait_if_paused()
         in_dr.wait(0.2)
         in_dr.tap('y')
         in_dr.wait(0.2)
-        found_PB = get_best_match_img_array(IMAGE_PATH_PB, REGION_AUCTION_ACTION_MENU)
-        found_VS = get_best_match_img_array(IMAGE_PATH_VS, REGION_AUCTION_ACTION_MENU)
-        found_AO = get_best_match_img_array(IMAGE_PATH_AO, REGION_AUCTION_ACTION_MENU)
-        if found_PB or found_VS or found_AO:
+        match = get_best_match_img_array([IMAGE_PATH_PB,IMAGE_PATH_VS], REGION_AUCTION_ACTION_MENU)
+        if match:
+            found_res, idx = match
             in_dr.wait(0.3)
-            # we are at active "place bid", need go down to buyout
-            if found_PB:
+            # we are at active "Place Bid", need go down to buyout
+            if idx == 0:
                 in_dr.tap('s')
                 in_dr.tap('enter')
                 in_dr.wait(0.5)
                 in_dr.tap('enter')
-                in_dr.wait(5)
                 buyout_press_fl = True
+                in_dr.wait(3)
             # we are at active View seller, this means someone bought before us
-            elif found_VS:
+            elif idx == 1:
                 break
         iter += 1
-   
+    
+    if iter >= 10:
+        something_wrong()
+
     ## buyout button succesfully pressed, try to get buyout result
     if buyout_press_fl:
         iter = 0
-        while not buyout_res_fl and iter<=10:
-            wait_if_paused()
+        while not buyout_res_fl and iter<10:
             iter += 1
-            found_buyout_failed = get_best_match_img_array(IMAGE_PATH_BF, REGION_AUCTION_ACTION_MENU)
-            found_buyout_success = get_best_match_img_array(IMAGE_PATH_BS, REGION_AUCTION_ACTION_MENU)
-            if found_buyout_failed:                
+            wait_if_paused()
+            match = get_best_match_img_array([IMAGE_PATH_BF,IMAGE_PATH_BS,IMAGE_PATH_DLC], REGION_AUCTION_ACTION_MENU)
+            if not match:
+                log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Missed {iter}/10 time', YELLOW_CODE)
+                in_dr.wait(3)
+                continue
+
+            found_buyout_res, idx = match
+            if idx==0:
                 log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Failed!', RED_CODE)
                 in_dr.tap('enter')
                 in_dr.wait(0.3)
                 in_dr.tap('esc')
                 buyout_res_fl = True
-            if found_buyout_success:
+            elif idx==1:
                 log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Success!', GREEN_CODE)
                 new_buyout_count = max(0, snipe_car['Buyout_num'] - 1)
                 update_buyout(snipe_car['Excel_index'], new_buyout_count)
@@ -680,19 +689,36 @@ def buyout(snipe_car) -> bool:
                     session_purchases = bought_in_session,
                 )
                 buyout_res_fl = True
-                result = True                   
+                result = True
                 in_dr.tap('enter')
                 in_dr.wait(0.3)
                 in_dr.tap('esc')
                 in_dr.wait(0.3)
                 in_dr.tap('esc')
-            else:
-                log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Missed!', YELLOW_CODE)
+            elif idx==2:
+                log_and_print('info', f'[{format_elapsed_time()}] BUYOUT Failed! (DLC Required)', RED_CODE)
+                new_buyout_count = 0
+                snipe_car['Buyout_num'] = new_buyout_count
+                update_buyout(snipe_car['Excel_index'], new_buyout_count)
+
+                refresh_snipe_time_left()
+                overlay_controller.update_status(
+                    remaining_buyouts = new_buyout_count,
+                    purchased_count   = snipe_car['Bought_num'],
+                    session_purchases = bought_in_session,
+                )
+                buyout_res_fl = True
+                result = True
                 in_dr.tap('esc')
-                in_dr.wait(3)
+                in_dr.wait(0.3)
+                in_dr.tap('esc')
+        if iter>=10:
+            log_and_print('info', f'BUYOUT Missed {iter} time - something wrong', RED_CODE)
     in_dr.wait(0.3)
     in_dr.tap('esc')
+    in_dr.wait(0.3)
     return result
+
 
 
 def update_buyout(row_index: int, buyout_num: int) -> None:
@@ -710,9 +736,9 @@ def update_buyout(row_index: int, buyout_num: int) -> None:
             return
         ws.cell(row=target_row, column=buyout_col, value=int(buyout_num))
         wb.save(EXCEL_PATH)
-        log_and_print('debug', f'Updated BUYOUT NUM for at row {row_index} to {buyout_num}', GREEN_CODE)
+        log_and_print('debug', f'Updated BUYOUT NUM in Excel sheet at row {row_index} to {buyout_num}', GREEN_CODE)
     except Exception as exc:
-        log_and_print('error', f'Failed to update BUYOUT NUM: {exc}', RED_CODE)
+        log_and_print('error', f'Failed to update BUYOUT NUM in Excel sheetн: {exc}', RED_CODE)
 
 
 def main():
@@ -765,7 +791,7 @@ def main():
         if STOP_EVENT.is_set():
             break
         
-        is_auc_res_found = get_best_match_img_array(IMAGE_PATH_NB, REGION_AUCTION_RESULT)
+        is_auc_res_found = get_best_match_img_array(IMAGE_PATH_AR, REGION_AUCTION_RESULT)
         if is_auc_res_found:
             logger.debug('Auction results found')
             is_car_found = get_best_match_img_array(IMAGE_PATH_AT, REGION_AUCTION_CAR_DESCR)
