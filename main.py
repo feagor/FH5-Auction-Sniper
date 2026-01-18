@@ -152,7 +152,7 @@ first_run = True
 miss_times = 1
 start_time = time.time()
 bought_in_session = 0
-sct = mss()
+sct_holder = threading.local()
 sniping_car = EMPTY_CAR_INFO.copy()
 snipe_secs_left = SNIPE_SEC_LIMIT
 
@@ -254,7 +254,16 @@ def log_and_print(level: str, message: str, color: str = None):
         log_fn(message)
 
 
+def _get_sct():
+    instance = getattr(sct_holder, 'instance', None)
+    if instance is None:
+        instance = mss()
+        sct_holder.instance = instance
+    return instance
+
+
 def capture_screen(region=None):
+    sct = _get_sct()
     if region:
         left, top, width, height = region
         monitor = {"left": left, "top": top, "width": width, "height": height}
