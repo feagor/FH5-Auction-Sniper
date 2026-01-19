@@ -777,7 +777,7 @@ def automation_main():
         in_dr.wait(0.5)
         wait_if_paused()        
         if STOP_EVENT.is_set():
-            something_wrong()
+            break
         
         if not is_search_auc_pressed:
             something_wrong()
