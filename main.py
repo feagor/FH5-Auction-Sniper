@@ -149,13 +149,14 @@ EMPTY_CAR_INFO = {
 }
 
 win_size = {'left': 0, 'top': 0, 'width': 0, 'height': 0}
-first_run = True
 miss_times = 1
 start_time = time.time()
 bought_in_session = 0
 sct_holder = threading.local()
 sniping_car = EMPTY_CAR_INFO.copy()
 snipe_secs_left = SNIPE_SEC_LIMIT
+filter_reset_needed = False
+first_run = True
 
 
 def exit_script():
@@ -544,8 +545,8 @@ def get_next_car_idx(cars, snipe_idx)->int:
     return -1
 
 
-def set_auc_search_cond(new_car, old_car):
-    global first_run, start_time
+def set_auc_search_cond(new_car, old_car, reset_fl: bool = False):
+    global start_time
     is_confirm_button_found = get_best_match_img_array(IMAGE_PATH_CF, REGION_AUCTION_MAIN)
     
     if STOP_EVENT.is_set():
@@ -559,9 +560,10 @@ def set_auc_search_cond(new_car, old_car):
     else:
         something_wrong()  
     
-    if first_run:
+    if reset_fl:
         log_and_print('info', 'Reseting search conditions', YELLOW_CODE)
         in_dr.tap('y', 1, 1) #reset search
+        old_car = EMPTY_CAR_INFO.copy()
     
     log_and_print('info', f'Setting search to: {new_car.get("Make_Name")}, {new_car.get("Model_FName")}', YELLOW_CODE)
     Make_X_Delta = int(old_car['Make_Loc'][0] - new_car['Make_Loc'][0])
@@ -595,7 +597,7 @@ def set_auc_search_cond(new_car, old_car):
     if STOP_EVENT.is_set():
         return
     
-    if first_run:
+    if reset_fl:
         in_dr.tap('s', 4, 0.3) #goto buyout price
         in_dr.wait(0.5)
         prices = [
@@ -612,7 +614,6 @@ def set_auc_search_cond(new_car, old_car):
         # setting buyout price, we have to tap one more time to set desire price
         # cause price_index starts from 0, not from 1
         in_dr.tap('d', price_idx+1, 0.15) 
-        first_run = False
     
     in_dr.tap('s', 5, 0.3) #goto search button
     log_and_print('info', f'Start sniping for {new_car.get("Make_Name")}, {new_car.get("Model_FName")}', GREEN_CODE)
@@ -631,7 +632,7 @@ def buyout(snipe_car) -> bool:
     def format_elapsed_time():
         seconds = time.time() - start_time
         return f'[{int(seconds // 60)}:{int(seconds % 60):02d}]'
-    global bought_in_session
+    global bought_in_session, filter_reset_needed, first_run
     result = False
     log_and_print('info', 'Car found in stock, try to buyout', GREEN_CODE)
     buyout_press_fl = False
@@ -692,6 +693,7 @@ def buyout(snipe_car) -> bool:
                 snipe_car['Buyout_num'] = new_buyout_count
                 snipe_car['Bought_num'] += 1
                 bought_in_session += 1
+                filter_reset_needed = True
 
                 refresh_snipe_time_left()
                 overlay_controller.update_status(
@@ -752,7 +754,7 @@ def update_buyout(row_index: int, buyout_num: int) -> None:
 
 
 def automation_main():
-    global bought_in_session
+    global bought_in_session, filter_reset_needed
     pre_check()
     swap_car_fl = True
     snipe_idx = 0
@@ -790,7 +792,7 @@ def automation_main():
                 log_and_print('info', f'All cars ({bought_in_session} pct) have been succesfully bought. Exit script.', GREEN_CODE)
                 break
             snipe_car = cars[snipe_idx]
-            set_auc_search_cond(snipe_car, prev_car)
+            set_auc_search_cond(snipe_car, prev_car, filter_reset_needed)
             swap_car_fl = False
             if STOP_EVENT.is_set():
                 break
@@ -808,9 +810,13 @@ def automation_main():
             if is_car_found:
                 buyout_succeeded = buyout(snipe_car)
                 cars[snipe_idx] = snipe_car
-                if buyout_succeeded and snipe_car['Buyout_num'] == 0:
-                    swap_car_fl = True
-                    log_and_print('info', f'Snipe for {snipe_car["Make_Name"]}, {snipe_car["Model_FName"]} Finished successfully. Switching to next car.', YELLOW_CODE)
+                if buyout_succeeded:
+                    # reset filter each time after succsessful buyout
+                    # cause sometimes script bugged and buyout wrong car
+                    filter_reset_needed = True
+                    if snipe_car['Buyout_num'] == 0:
+                        swap_car_fl = True
+                        log_and_print('info', f'Snipe for {snipe_car["Make_Name"]}, {snipe_car["Model_FName"]} Finished successfully. Switching to next car.', YELLOW_CODE)
 
             elif is_car_found is None and is_auc_res_found and is_confirm_button_pressed:
                 log_and_print('debug', 'Car not found in stock')
