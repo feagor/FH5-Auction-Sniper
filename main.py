@@ -155,7 +155,7 @@ bought_in_session = 0
 sct_holder = threading.local()
 sniping_car = EMPTY_CAR_INFO.copy()
 snipe_secs_left = SNIPE_SEC_LIMIT
-filter_reset_needed = False
+filter_reset_needed = True
 first_run = True
 
 
@@ -632,7 +632,7 @@ def buyout(snipe_car) -> bool:
     def format_elapsed_time():
         seconds = time.time() - start_time
         return f'[{int(seconds // 60)}:{int(seconds % 60):02d}]'
-    global bought_in_session, filter_reset_needed, first_run
+    global bought_in_session
     result = False
     log_and_print('info', 'Car found in stock, try to buyout', GREEN_CODE)
     buyout_press_fl = False
@@ -693,8 +693,6 @@ def buyout(snipe_car) -> bool:
                 snipe_car['Buyout_num'] = new_buyout_count
                 snipe_car['Bought_num'] += 1
                 bought_in_session += 1
-                filter_reset_needed = True
-
                 refresh_snipe_time_left()
                 overlay_controller.update_status(
                     remaining_buyouts=new_buyout_count,
@@ -713,7 +711,6 @@ def buyout(snipe_car) -> bool:
                 new_buyout_count = 0
                 snipe_car['Buyout_num'] = new_buyout_count
                 update_buyout(snipe_car['Excel_index'], new_buyout_count)
-
                 refresh_snipe_time_left()
                 overlay_controller.update_status(
                     remaining_buyouts=new_buyout_count,
@@ -754,7 +751,7 @@ def update_buyout(row_index: int, buyout_num: int) -> None:
 
 
 def automation_main():
-    global bought_in_session, filter_reset_needed
+    global bought_in_session, filter_reset_needed, first_run
     pre_check()
     swap_car_fl = True
     snipe_idx = 0
@@ -794,6 +791,8 @@ def automation_main():
             snipe_car = cars[snipe_idx]
             set_auc_search_cond(snipe_car, prev_car, filter_reset_needed)
             swap_car_fl = False
+            filter_reset_needed = False
+            first_run = False
             if STOP_EVENT.is_set():
                 break
         
@@ -813,6 +812,7 @@ def automation_main():
                 if buyout_succeeded:
                     # reset filter each time after succsessful buyout
                     # cause sometimes script bugged and buyout wrong car
+                    # so we should reset filter to be sure next search is correct 
                     filter_reset_needed = True
                     if snipe_car['Buyout_num'] == 0:
                         swap_car_fl = True
