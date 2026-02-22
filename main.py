@@ -157,6 +157,7 @@ sniping_car = EMPTY_CAR_INFO.copy()
 snipe_secs_left = SNIPE_SEC_LIMIT
 filter_reset_needed = True
 first_run = True
+original_win_size = {}
 
 
 def exit_script():
@@ -374,10 +375,12 @@ def active_game_window():
 
 
 def measure_game_window():
-    global REGION_HOME_TABS, REGION_AUCTION_MAIN, REGION_AUCTION_CAR_DESCR, REGION_AUCTION_ACTION_MENU, REGION_AUCTION_RESULT
+    global REGION_HOME_TABS, REGION_AUCTION_MAIN, REGION_AUCTION_CAR_DESCR, REGION_AUCTION_ACTION_MENU, REGION_AUCTION_RESULT, original_win_size
     try:
         game_window = active_game_window()
         if game_window:
+            # Save original size before resizing
+            original_win_size = {'width': game_window.width, 'height': game_window.height}
             game_window.resizeTo(1616, 939)
             win_size.update(
                 {'left': game_window.left, 
@@ -865,6 +868,16 @@ def main():
         overlay_controller.run_mainloop(abort_check=lambda: not worker.is_alive())
 
         worker.join()
+        # Restore original window size after stop
+        if 'width' in original_win_size and 'height' in original_win_size:
+            try:
+                windows = gw.getWindowsWithTitle(GAME_TITLE)
+                if windows:
+                    game_window = windows[0]
+                    game_window.resizeTo(original_win_size['width'], original_win_size['height'])
+                    log_and_print('info', f'Restored game window size to {original_win_size["width"]}x{original_win_size["height"]}', GREEN_CODE)
+            except Exception as e:
+                log_and_print('warning', f'Failed to restore window size: {e}', YELLOW_CODE)
     else:
         automation_main()
 
